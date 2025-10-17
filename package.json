@@ -6,7 +6,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start:mongo": "\"C:\\Program Files\\MongoDB\\Server\\6.0\\bin\\mongod.exe\" --dbpath=\"C:\\data\\db\"",
     "start:server": "nodemon server.js",
-    "dev": "start cmd /k \"npm run start:mongo\" && npm run start:server"
+    "dev": "start cmd /k \"npm run start:mongo\" && npm run start:server",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",

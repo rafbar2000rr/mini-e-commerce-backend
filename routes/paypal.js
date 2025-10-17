@@ -1,11 +1,9 @@
-// routes/paypal.js
 const express = require("express");
 const paypal = require("@paypal/checkout-server-sdk");
-const fetch = require("node-fetch");
 const Order = require("../models/Order");
 const Producto = require("../models/Producto");
-const User = require("../models/User"); 
-const verifyToken = require("../middleware/verifyToken"); 
+const User = require("../models/User");
+const verifyToken = require("../middleware/verifyToken");
 
 const router = express.Router();
 
@@ -43,7 +41,6 @@ router.post("/api/create-order", async (req, res) => {
   }
 });
 
-
 // ✅ Capturar pago, guardar orden y actualizar stock + vaciar carrito
 router.post("/api/capture-order/:orderID", verifyToken, async (req, res) => {
   try {
@@ -78,7 +75,7 @@ router.post("/api/capture-order/:orderID", verifyToken, async (req, res) => {
 
     // 🔹 Crear nueva orden asociada al usuario autenticado
     const nuevaOrden = new Order({
-      usuario: req.userId, // ✅ viene del token
+      usuario: req.userId,
       paypalOrderId: orderID,
       status: captureData.status,
       productos: req.body.productos,
@@ -94,13 +91,12 @@ router.post("/api/capture-order/:orderID", verifyToken, async (req, res) => {
     });
 
     await nuevaOrden.save();
-   // 🩷 Vaciar carrito del usuario logueado (si hay token)
-if (req.userId) {
-  await User.findByIdAndUpdate(req.userId, { carrito: [] });
-  console.log(`🧹 Carrito vaciado para usuario con ID: ${req.userId}`);
-}
 
-
+    // 🩷 Vaciar carrito del usuario
+    if (req.userId) {
+      await User.findByIdAndUpdate(req.userId, { carrito: [] });
+      console.log(`🧹 Carrito vaciado para usuario con ID: ${req.userId}`);
+    }
 
     // 🔹 Actualizar stock
     for (const item of req.body.productos) {
@@ -115,14 +111,10 @@ if (req.userId) {
       }
     }
 
-    // 🔹 Vaciar el carrito del usuario
-    await User.findByIdAndUpdate(req.userId, { carrito: [] });
-
     res.json({
       msg: "✅ Orden guardada correctamente, stock actualizado y carrito vaciado",
       orden: nuevaOrden,
     });
-
   } catch (err) {
     console.error("❌ Error capturando orden:", err);
     res.status(500).json({

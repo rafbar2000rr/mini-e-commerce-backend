@@ -122,20 +122,21 @@ router.get("/orders/:id", verifyToken, async (req, res) => {
     const orderId = req.params.id;
 
     // ✅ Validar ID
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {//Evita que alguien mande cualquier string raro (ej: /orders/abc) que haría fallar la consulta.
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: "ID de orden inválido" });
     }
 
-    const orden = await Order.findOne({ _id: orderId, usuario: userId }).select(//Busca en la colección Order la orden cuyo _id coincida con orderId y que pertenezca al usuario autenticado (usuario: userId).Esto garantiza que un usuario no pueda ver órdenes de otro.
-      "-__v"
-    ); // ❌ ocultamos __v
+    // ✅ Buscar la orden del usuario y poblar productos usando "productoId"
+    const orden = await Order.findOne({ _id: orderId, usuario: userId })
+      .select("-__v")
+      .populate("productos.productoId", "nombre imagen precio");
 
-    if (!orden) {//Si no se encuentra ninguna orden que cumpla esas condiciones → devuelve error 404.
+    if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
     }
 
-    res.json(orden);//Devuelve la orden encontrada como JSON al cliente (sin el campo __v).
-  } catch (error) {//Si ocurre un error inesperado en la consulta o en la base de datos → responde con error 500.
+    res.json(orden);
+  } catch (error) {
     console.error("❌ Error al obtener detalle de la orden:", error.message);
     res.status(500).json({ error: "Error al obtener detalle de la orden" });
   }

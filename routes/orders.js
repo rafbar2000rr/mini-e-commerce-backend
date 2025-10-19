@@ -143,36 +143,37 @@ router.get("/orders/:id", verifyToken, async (req, res) => {
 
 //----------------------------------------------------------------------------------------------
 // ✅ Descargar orden en PDF. Este endpoint permite que un usuario autenticado descargue un PDF con el detalle de una orden que le pertenece. No guarda el archivo en el servidor, sino que lo genera en memoria y lo envía como descarga directa al navegador.
-router.get("/orders/:id/pdf", verifyToken, async (req, res) => {//verifyToken asegura que solo el usuario autenticado pueda acceder.
+router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
   try {
-    const userId = req.userId; // userId: viene del token decodificado (usuario logueado).
-    const orderId = req.params.id;//orderId: viene de la URL (/orders/6523abcd/pdf → "6523abcd").
+    const userId = req.userId;
+    const orderId = req.params.id;
 
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {//Se asegura de que el orderId sea un ObjectId válido de MongoDB.Si no lo es → devuelve error 400 (petición incorrecta).
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: "ID de orden inválido" });
     }
 
-    const orden = await Order.findOne({ _id: orderId, usuario: userId }).populate( //Busca la orden que tenga:_id = orderId usuario = userId (garantiza que el usuario no descargue órdenes ajenas)..populate("usuario"): trae también la info del usuario (ej: nombre, email), útil para el PDF.
-      "usuario"
-    );
-    if (!orden) {//Si la orden no existe → error 404.
+    const orden = await Order.findOne({ _id: orderId, usuario: userId })
+      .select("-__v")
+      .populate("usuario") // ✅ trae los datos del cliente
+      .populate("productos.producto", "nombre imagen precio"); // ✅ trae nombre, imagen y precio del producto
+
+    if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
     }
 
-    // Generar el PDF en memoria.generarPDF(orden) es una función que recibe la orden y devuelve un buffer en memoria con el contenido del PDF.Ese pdfBuffer es como un archivo ya listo, pero sin guardarlo en disco.
     const pdfBuffer = await generarPDF(orden);
 
-    // Enviar PDF como respuesta para descarga. "Content-Type": "application/pdf" → el navegador sabe que es un archivo PDF."Content-Disposition": "attachment; filename=..." → hace que el navegador lo descargue directamente y le pone nombre (ej: orden_6523abcd.pdf).
-    res.set({   
+    res.set({
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`
+      "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`,
     });
-    res.send(pdfBuffer);//Envía el archivo generado al cliente como respuesta HTTP
-  } catch (error) {//Si algo falla (ej: la función generarPDF), devuelve un error 500.
+    res.send(pdfBuffer);
+  } catch (error) {
     console.error("❌ Error al generar PDF:", error.message);
     res.status(500).json({ error: "Error al generar el PDF" });
   }
 });
+
 
 //--------------------------------------------------------------------------------------------------------------------
 // ✅ Obtener todas las órdenes del usuario autenticado

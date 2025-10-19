@@ -1,3 +1,8 @@
+const express = require("express"); 
+const router = express.Router();  // ✅ Define el router
+const User = require("../models/User");
+const jwt = require("jsonwebtoken");
+
 router.post("/register", async (req, res) => {
   const { nombre, email, password } = req.body;
 
@@ -17,7 +22,7 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "El correo ya está registrado" });
     }
 
-    // ⚠️ Aquí NO encriptamos, el modelo ya lo hace automáticamente
+    // ⚠️ El modelo ya encripta la contraseña automáticamente
     const newUser = new User({ nombre, email, password });
     await newUser.save();
 
@@ -43,3 +48,5 @@ router.post("/register", async (req, res) => {
       .json({ error: "Error al registrar el usuario", details: error.message });
   }
 });
+
+module.exports = router;  // ✅ Exporta el router

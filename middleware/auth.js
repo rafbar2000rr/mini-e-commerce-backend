@@ -19,9 +19,10 @@ const authMiddleware = async (req, res, next) => {
 };
 
 // ✅ Solo admin puede acceder
+// backend/middleware/auth.js
 const adminMiddleware = (req, res, next) => {
-  if (req.user.rol !== "admin") {
-    return res.status(403).json({ error: "No tienes permisos de administrador" });
+  if (!req.user || req.user.rol !== "admin") {
+    return res.status(403).json({ mensaje: "Acceso denegado. Solo admins." });
   }
   next();
 };

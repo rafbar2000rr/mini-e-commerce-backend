@@ -19,6 +19,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  rol: { type: String, enum: ["user", "admin"], default: "user" },
   carrito: [
     {
       productoId: { type: mongoose.Schema.Types.ObjectId, ref: "Producto" },

@@ -6,6 +6,7 @@ const verifyToken = require("../middleware/verifyToken");
 const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
+const { authMiddleware, adminMiddleware } = require("../middleware/auth");
 
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
@@ -219,34 +220,41 @@ router.get("/orders", async (req, res) => {
 
 //-----------------------------------------------------------------------
 // ✅ Actualizar estado de una orden (pendiente → enviado → entregado)
-router.patch("/orders/:id", async (req, res) => {
-  try {
-    const { estado } = req.body;
 
-    // Validar que manden el estado
-    if (!estado) {
-      return res.status(400).json({ error: "El campo 'estado' es obligatorio" });
+
+router.patch(
+  "/orders/:id",
+  authMiddleware,      // 🔹 Verifica que el usuario esté logueado
+  adminMiddleware,     // 🔹 Verifica que sea admin
+  async (req, res) => {
+    try {
+      const { estado } = req.body;
+
+      // Validar que manden el estado
+      if (!estado) {
+        return res.status(400).json({ error: "El campo 'estado' es obligatorio" });
+      }
+
+      // Buscar y actualizar
+      const ordenActualizada = await Order.findByIdAndUpdate(
+        req.params.id,
+        { estado },
+        { new: true } // devuelve la orden actualizada
+      );
+
+      if (!ordenActualizada) {
+        return res.status(404).json({ error: "Orden no encontrada" });
+      }
+
+      // ✅ Devolvemos la orden actualizada
+      res.json(ordenActualizada);
+
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error actualizando la orden" });
     }
-
-    // Buscar y actualizar
-    const ordenActualizada = await Order.findByIdAndUpdate(
-      req.params.id,
-      { estado },
-      { new: true } // devuelve la orden actualizada
-    );
-
-    if (!ordenActualizada) {
-      return res.status(404).json({ error: "Orden no encontrada" });
-    }
-
-    // ✅ Devolvemos la orden actualizada
-    res.json(ordenActualizada);
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error actualizando la orden" });
   }
-});
+);
 
 
 

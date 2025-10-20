@@ -3,6 +3,7 @@ const router = express.Router();  // ✅ Define el router
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const verifyToken = require("../middlewares/verifyToken"); 
 
 router.post("/register", async (req, res) => {
   const { nombre, email, password } = req.body;
@@ -91,5 +92,16 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// GET /me -> devuelve datos del usuario logueado
+router.get("/me", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("-password"); // sin contraseña
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error obteniendo usuario" });
+  }
+});
 
 module.exports = router;  // ✅ Exporta el router

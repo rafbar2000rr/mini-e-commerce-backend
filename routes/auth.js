@@ -104,17 +104,24 @@ router.get("/me", verifyToken, async (req, res) => {
   }
 });
 
-// PUT /auth/update-me -> actualiza datos del usuario logueado
-router.put("/update-me", verifyToken, async (req, res) => {
+// PUT /perfil -> actualizar datos del usuario
+router.put("/perfil", verifyToken, async (req, res) => {
   try {
-    const updates = req.body; // puede ser { nombre, email, direccion, ciudad, codigoPostal }
-    const user = await User.findByIdAndUpdate(req.userId, updates, { new: true }).select("-password");
-    res.json({ message: "Usuario actualizado", user });
+    const { nombre, email, direccion, ciudad, codigoPostal } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { nombre, email, direccion, ciudad, codigoPostal },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    res.json(user);
   } catch (err) {
-    console.error("❌ Error actualizando usuario:", err);
-    res.status(500).json({ error: "Error actualizando usuario" });
+    console.error(err);
+    res.status(500).json({ error: "Error al actualizar perfil" });
   }
 });
+
+
 
 
 module.exports = router;  // ✅ Exporta el router

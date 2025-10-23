@@ -155,11 +155,10 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
       return res.status(400).json({ error: "ID de orden inválido" });
     }
 
-    // Populate correcto para productos y usuario
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
       .select("-__v")
-      .populate("usuario") // trae datos del cliente
-      .populate("productos.productoId", "nombre imagen precio"); // trae detalles del producto
+      .populate("usuario")
+      .populate("productos.productoId", "nombre imagen precio");
 
     if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });

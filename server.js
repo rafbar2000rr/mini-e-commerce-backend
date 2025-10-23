@@ -18,7 +18,7 @@ const paypalRoutes = require("./routes/paypal");
 
 
 app.use('/api', authRoutes);
-app.use("/api/me", authRoutes);
+//app.use("/api/me", authRoutes);
 app.use('/api', productRoutes);
 app.use('/api', orderRoutes);
 app.use('/api', carritoRoutes);

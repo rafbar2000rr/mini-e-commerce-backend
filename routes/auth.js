@@ -106,56 +106,56 @@ router.get("/me", verifyToken, async (req, res) => {
 
 // PUT /perfil -> actualizar datos del usuario
 // PUT /perfil -> actualizar datos del usuario
+// router.put("/perfil", verifyToken, async (req, res) => {
+//   try {
+//     const { nombre, email, direccion, ciudad, codigoPostal } = req.body;
+
+//     // 💜 Validaciones básicas
+//     if (!nombre || !email) {
+//       return res.status(400).json({ error: "El nombre y el email son obligatorios 💕" });
+//     }
+
+//     // 💜 Actualiza solo los campos que llegan
+//     const user = await User.findByIdAndUpdate(
+//       req.userId,
+//       { nombre, email, direccion, ciudad, codigoPostal },
+//       { new: true, runValidators: true }
+//     ).select("-password");
+
+//     if (!user) {
+//       return res.status(404).json({ error: "Usuario no encontrado 💔" });
+//     }
+
+//     res.json({
+//       message: "Perfil actualizado correctamente 💖",
+//       user
+//     });
+
+//   } catch (err) {
+//     console.error("❌ Error al actualizar perfil:", err);
+//     res.status(500).json({ error: "Error al actualizar perfil" });
+//   }
+// });
+
 router.put("/perfil", verifyToken, async (req, res) => {
   try {
     const { nombre, email, direccion, ciudad, codigoPostal } = req.body;
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // 💜 Validaciones básicas
-    if (!nombre || !email) {
-      return res.status(400).json({ error: "El nombre y el email son obligatorios 💕" });
-    }
+    user.nombre = nombre || user.nombre;
+    user.email = email || user.email;
+    user.direccion = direccion || user.direccion;
+    user.ciudad = ciudad || user.ciudad;
+    user.codigoPostal = codigoPostal || user.codigoPostal;
 
-    // 💜 Actualiza solo los campos que llegan
-    const user = await User.findByIdAndUpdate(
-      req.userId,
-      { nombre, email, direccion, ciudad, codigoPostal },
-      { new: true, runValidators: true }
-    ).select("-password");
-
-    if (!user) {
-      return res.status(404).json({ error: "Usuario no encontrado 💔" });
-    }
-
-    res.json({
-      message: "Perfil actualizado correctamente 💖",
-      user
-    });
-
+    await user.save();
+    res.json({ message: "Perfil actualizado correctamente" });
   } catch (err) {
-    console.error("❌ Error al actualizar perfil:", err);
-    res.status(500).json({ error: "Error al actualizar perfil" });
+    console.error(err);
+    res.status(500).json({ error: "Error actualizando perfil" });
   }
 });
-
-// router.put("/actualizar-usuario", verifyToken, async (req, res) => {
-//   try {
-//     const { nombre, email, direccion, ciudad, codigoPostal } = req.body;
-//     const user = await User.findById(req.userId);
-//     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-
-//     user.nombre = nombre || user.nombre;
-//     user.email = email || user.email;
-//     user.direccion = direccion || user.direccion;
-//     user.ciudad = ciudad || user.ciudad;
-//     user.codigoPostal = codigoPostal || user.codigoPostal;
-
-//     await user.save();
-//     res.json({ message: "Perfil actualizado correctamente" });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: "Error actualizando perfil" });
-//   }
-// });
 
 
 

@@ -5,6 +5,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { authMiddleware, adminMiddleware } = require("../middleware/auth");
+const verifyToken = require('../middleware/verifyToken');
 
 //---------------------------------------------------------
 // 📦 Configuración de Multer para subir imágenes
@@ -58,7 +59,7 @@ async function obtenerProductos(req, res, isAdmin = false) {
 //---------------------------------------------------------
 // 🆕 Crear producto → Solo admin
 //---------------------------------------------------------
-router.post('/productos', authMiddleware, adminMiddleware, upload.single('imagen'), async (req, res) => {
+router.post('/productos', verifyToken, upload.single('imagen'), async (req, res) => {
   try {
     const { nombre, precio, descripcion, categoria, stock } = req.body;
 
@@ -86,7 +87,7 @@ router.post('/productos', authMiddleware, adminMiddleware, upload.single('imagen
 //---------------------------------------------------------
 // 📜 Listado de productos → Admin
 //---------------------------------------------------------
-router.get('/productos', authMiddleware, adminMiddleware, (req, res) => {
+router.get('/productos', verifyToken, (req, res) => {
   obtenerProductos(req, res, true);
 });
 
@@ -100,7 +101,7 @@ router.get('/catalogo', (req, res) => {
 //---------------------------------------------------------
 // ✏ Actualizar producto → Solo admin
 //---------------------------------------------------------
-router.put('/productos/:id', authMiddleware, adminMiddleware, upload.single('imagen'), async (req, res) => {
+router.put('/productos/:id', verifyToken, upload.single('imagen'), async (req, res) => {
   try {
     const { nombre, precio, descripcion, categoria, stock, imagen: imagenURL } = req.body;
 
@@ -137,7 +138,7 @@ router.put('/productos/:id', authMiddleware, adminMiddleware, upload.single('ima
 //---------------------------------------------------------
 // 🗑 Eliminar producto → Solo admin
 //---------------------------------------------------------
-router.delete('/productos/:id', authMiddleware, adminMiddleware, async (req, res) => {
+router.delete('/productos/:id', verifyToken, async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
@@ -175,7 +176,7 @@ router.get("/productos/:id", async (req, res) => {
 //---------------------------------------------------------
 // 🔹 Actualizar solo stock → Solo admin
 //---------------------------------------------------------
-router.patch("/productos/:id/stock", authMiddleware, adminMiddleware, async (req, res) => {
+router.patch("/productos/:id/stock", verifyToken, async (req, res) => {
   try {
     const { cantidad } = req.body;
     const producto = await Producto.findById(req.params.id);

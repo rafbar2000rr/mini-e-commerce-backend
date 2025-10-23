@@ -15,11 +15,25 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true
   },
+
   password: {
     type: String,
     required: true
   },
+   direccion: {
+    type: String,
+    default: ""
+  },
+  ciudad: {
+    type: String,
+    default: ""
+  },
+  codigoPostal: {
+    type: String,
+    default: ""
+  },
   rol: { type: String, enum: ["user", "admin"], default: "user" },
+  
   carrito: [
     {
       productoId: { type: mongoose.Schema.Types.ObjectId, ref: "Producto" },

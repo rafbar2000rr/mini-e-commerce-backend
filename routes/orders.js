@@ -145,6 +145,7 @@ router.get("/orders/:id", verifyToken, async (req, res) => {
 
 //----------------------------------------------------------------------------------------------
 // ✅ Descargar orden en PDF. Este endpoint permite que un usuario autenticado descargue un PDF con el detalle de una orden que le pertenece. No guarda el archivo en el servidor, sino que lo genera en memoria y lo envía como descarga directa al navegador.
+// Descargar orden en PDF
 router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
@@ -154,10 +155,11 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
       return res.status(400).json({ error: "ID de orden inválido" });
     }
 
+    // Populate correcto para productos y usuario
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
       .select("-__v")
-      .populate("usuario") // ✅ trae los datos del cliente
-      .populate("productos.producto", "nombre imagen precio"); // ✅ trae nombre, imagen y precio del producto
+      .populate("usuario") // trae datos del cliente
+      .populate("productos.productoId", "nombre imagen precio"); // trae detalles del producto
 
     if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
@@ -170,6 +172,7 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
       "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`,
     });
     res.send(pdfBuffer);
+
   } catch (error) {
     console.error("❌ Error al generar PDF:", error.message);
     res.status(500).json({ error: "Error al generar el PDF" });
@@ -223,9 +226,9 @@ router.get("/orders", async (req, res) => {
 
 
 router.patch(
-  "/orders/:id",
-  authMiddleware,      // 🔹 Verifica que el usuario esté logueado
-  adminMiddleware,     // 🔹 Verifica que sea admin
+  "/orders/:id", verifyToken,
+       // 🔹 Verifica que el usuario esté logueado
+       // 🔹 Verifica que sea admin
   async (req, res) => {
     try {
       const { estado } = req.body;

@@ -10,20 +10,21 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 // Importar rutas
 const authRoutes = require('./routes/auth');
-app.use('/', authRoutes);
 const productRoutes = require('./routes/products');
-app.use('/', productRoutes);
 const orderRoutes = require('./routes/orders');
-app.use('/', orderRoutes);
-app.use('/', require("./routes/carrito"));
-app.use("/me", authRoutes);
 const carritoRoutes = require("./routes/carrito");
-app.use("/carrito", carritoRoutes);
 const categoriaRoutes = require("./routes/categorias");
-app.use("/", categoriaRoutes);
-
 const paypalRoutes = require("./routes/paypal");
-app.use("/paypal", paypalRoutes);
+
+
+app.use('/api', authRoutes);
+app.use("/api/me", authRoutes);
+app.use('/api', productRoutes);
+app.use('/api', orderRoutes);
+app.use('/api', carritoRoutes);
+app.use('api/carrito', carritoRoutes);
+app.use('/api', categoriaRoutes);
+app.use('/api/paypal', paypalRoutes);
 
 // Servir carpeta uploads como pública
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

@@ -15,7 +15,7 @@ const environment = new paypal.core.SandboxEnvironment(
 const client = new paypal.core.PayPalHttpClient(environment);
 
 // ✅ Crear orden de PayPal
-router.post("/api/create-order", async (req, res) => {
+router.post("/create-order", async (req, res) => {
   const { total } = req.body;
 
   const request = new paypal.orders.OrdersCreateRequest();
@@ -42,7 +42,7 @@ router.post("/api/create-order", async (req, res) => {
 });
 
 // ✅ Capturar pago, guardar orden y actualizar stock + vaciar carrito
-router.post("/api/capture-order/:orderID", verifyToken, async (req, res) => {
+router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
   try {
     const { orderID } = req.params;
 

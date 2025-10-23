@@ -158,7 +158,7 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
       .select("-__v")
       .populate("usuario")
-      .populate("productos.productoId", "nombre imagen precio");
+      .populate("productos.productoId", "nombre imagen precio"); // ✅ corregido
 
     if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
@@ -177,7 +177,6 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Error al generar el PDF" });
   }
 });
-
 
 //--------------------------------------------------------------------------------------------------------------------
 // ✅ Obtener todas las órdenes del usuario autenticado

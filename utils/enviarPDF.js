@@ -17,7 +17,7 @@ async function generarPDF(orden) {
         resolve(pdfBuffer);
       });
 
-      // 🌸 Encabezado principal
+      // 🌸 Encabezado
       doc.fillColor("#D63384").fontSize(22).text("Mini E-commerce", {
         align: "center",
       });
@@ -31,9 +31,7 @@ async function generarPDF(orden) {
       doc.fontSize(12).fillColor("black");
       doc.text(`ID de la Orden: ${orden._id}`);
       doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
-      doc.font("Helvetica-Bold").text(
-        `Total: $${(orden.total ?? 0).toFixed(2)}`
-      );
+      doc.font("Helvetica-Bold").text(`Total: $${orden.total.toFixed(2)}`);
       doc.moveDown(1);
 
       // 👤 Datos del cliente
@@ -42,46 +40,42 @@ async function generarPDF(orden) {
       doc.font("Helvetica").fillColor("black").fontSize(12);
       doc.text(`Nombre: ${orden.datosCliente?.nombre || "No disponible"}`);
       doc.text(`Email: ${orden.datosCliente?.email || "No disponible"}`);
-      doc.text(`Dirección: ${orden.datosCliente?.direccion || "No disponible"}`);
-      doc.text(`Ciudad: ${orden.datosCliente?.ciudad || "No disponible"}`);
-      doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal || "No disponible"}`);
+      doc.text(`Dirección: ${orden.datosCliente?.direccion}`);
+      doc.text(`Ciudad: ${orden.datosCliente?.ciudad}`);
+      doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal}`);
       doc.moveDown(1);
 
       // 🛍️ Productos
       doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Productos:", { underline: true });
       doc.moveDown(0.5);
 
-      if (!orden.productos || orden.productos.length === 0) {
-        doc.text("No hay productos en esta orden.");
-      } else {
-        orden.productos.forEach((p) => {
-          const y = doc.y;
+      orden.productos.forEach((p) => {
+        const y = doc.y;
 
-          // 📸 Imagen del producto
-          if (p.imagen) {
-            try {
-              const imagePath = path.join(__dirname, "..", "uploads", path.basename(p.imagen));
-              if (fs.existsSync(imagePath)) {
-                doc.image(imagePath, 50, y, { width: 50, height: 50 });
-              }
-            } catch (err) {
-              console.error("❌ Error cargando imagen del producto:", err.message);
+        // 📸 Miniatura del producto
+        if (p.imagen) {
+          try {
+            const imagePath = path.join(__dirname, "..", "uploads", path.basename(p.imagen));
+            if (fs.existsSync(imagePath)) {
+              doc.image(imagePath, 50, y, { width: 50, height: 50 });
             }
+          } catch (err) {
+            console.error("❌ Error cargando imagen del producto:", err.message);
           }
+        }
 
-          // 📦 Detalle del producto
-          doc.font("Helvetica").fillColor("black").fontSize(12).text(
-            `${p.nombre || "Producto sin nombre"} - $${(p.precio ?? 0).toFixed(2)} x ${p.cantidad ?? 1}`,
-            120,
-            y + 15
-          );
+        // 📦 Datos del producto
+        doc.font("Helvetica").fillColor("black").fontSize(12).text(
+          `${p.nombre} - $${p.precio.toFixed(2)} x ${p.cantidad}`,
+          120,
+          y + 15
+        );
 
-          doc.moveDown(2);
-          // Línea separadora
-          doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ddd").stroke();
-          doc.moveDown(0.5);
-        });
-      }
+        doc.moveDown(2);
+        // Línea separadora
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ddd").stroke();
+        doc.moveDown(0.5);
+      });
 
       // 💖 Mensaje final
       doc.moveDown(2);
@@ -94,6 +88,7 @@ async function generarPDF(orden) {
     }
   });
 }
+
 
 //-------------------------------------------------------------------------------
 // 📌 Enviar PDF por correo

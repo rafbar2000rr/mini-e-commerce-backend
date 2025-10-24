@@ -5,6 +5,7 @@ const fs = require("fs");
 
 //-------------------------------------------------------------------------------
 // ✅ Tu función para generar y enviar el PDF
+
 async function generarPDF(orden) {
   return new Promise((resolve, reject) => {
     try {

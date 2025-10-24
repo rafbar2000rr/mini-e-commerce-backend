@@ -105,7 +105,6 @@ router.get("/me", verifyToken, async (req, res) => {
 });
 
 // PUT /perfil -> actualizar datos del usuario
-// PUT /perfil -> actualizar datos del usuario
 router.put("/perfil", verifyToken, async (req, res) => {
   try {
     const { nombre, email, direccion, ciudad, codigoPostal } = req.body;
@@ -137,25 +136,6 @@ router.put("/perfil", verifyToken, async (req, res) => {
   }
 });
 
-// router.put("/perfil", verifyToken, async (req, res) => {
-//   try {
-//     const { nombre, email, direccion, ciudad, codigoPostal } = req.body;
-//     const user = await User.findById(req.userId);
-//     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-
-//     user.nombre = nombre || user.nombre;
-//     user.email = email || user.email;
-//     user.direccion = direccion || user.direccion;
-//     user.ciudad = ciudad || user.ciudad;
-//     user.codigoPostal = codigoPostal || user.codigoPostal;
-
-//     await user.save();
-//     res.json({ message: "Perfil actualizado correctamente" });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: "Error actualizando perfil" });
-//   }
-// });
 
 
 

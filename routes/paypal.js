@@ -50,7 +50,6 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
     const auth = Buffer.from(
       process.env.PAYPAL_CLIENT_ID + ":" + process.env.PAYPAL_CLIENT_SECRET
     ).toString("base64");
-     console.log("Total enviado a PayPal:", total);
 
     const captureRes = await fetch(
       `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderID}/capture`,

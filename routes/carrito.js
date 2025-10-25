@@ -136,36 +136,34 @@ router.delete("/", verifyToken, async (req, res) => {
 });
 
 //--------------------------------------------------------------------------------
-// 🔹 Sincronizar carrito (al iniciar sesión)
+// 🔹 Sincronizar carrito al iniciar sesión
 router.post("/sincronizar", verifyToken, async (req, res) => {
   try {
-    const { carritoLocal } = req.body; // carrito que viene del frontend (localStorage)
+    const { carritoLocal } = req.body; // carrito que viene del frontend
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // Carrito que ya existe en el servidor
-    const carritoServidor = user.carrito.map(item => ({
-      productoId: item.productoId?._id?.toString() || item.productoId?.toString(),
-      cantidad: item.cantidad,
-    }));
-
+    // Crear un mapa para fusionar por productoId y sumar cantidades si ya existen
     const mapa = new Map();
 
-    // Fusionar carrito local y del servidor
-    [...carritoLocal, ...carritoServidor].forEach(item => {
-      const id =
-        item?.productoId?._id?.toString() ||
-        item?.productoId?.toString() ||
-        item?.id?.toString() ||
-        item?._id?.toString();
+    // Agregamos los productos del carrito del servidor
+    user.carrito.forEach(item => {
+      const id = item.productoId?._id?.toString() || item.productoId?.toString();
+      if (id) mapa.set(id, { productoId: id, cantidad: item.cantidad });
+    });
 
+    // Agregamos productos del carrito local
+    carritoLocal.forEach(item => {
+      const id =
+        item._id?.toString() ||
+        item.productoId?._id?.toString() ||
+        item.productoId?.toString();
       if (!id) return;
 
       if (mapa.has(id)) {
-        // Si ya existe, sumar cantidades
+        // sumar cantidades
         mapa.get(id).cantidad += item.cantidad;
       } else {
-        // Si no, agregarlo al mapa
         mapa.set(id, { productoId: id, cantidad: item.cantidad });
       }
     });

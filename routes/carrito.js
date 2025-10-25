@@ -1,8 +1,8 @@
-
 const express = require("express");
 const router = express.Router();
 const verifyToken = require("../middleware/verifyToken");
 const User = require("../models/User");
+
 
 //-------------------------------------------------------------
 // 🔹 Inyectar Socket.io en req.app.get("io")
@@ -11,13 +11,17 @@ const User = require("../models/User");
 // const io = new Server(server);
 // app.set("io", io);
 
+
+
+
 //-------------------------------------------------------------
-// 🔹 Obtener carrito del usuario
+// 💠 Obtener carrito del usuario
 //-------------------------------------------------------------
 router.get("/", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.userId).populate("carrito.productoId");
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
     res.json(user.carrito);
   } catch (err) {
     console.error("❌ Error al obtener carrito:", err.message);
@@ -26,35 +30,35 @@ router.get("/", verifyToken, async (req, res) => {
 });
 
 //-------------------------------------------------------------
-// 🔹 Agregar producto al carrito
+// 💠 Agregar producto al carrito
 //-------------------------------------------------------------
 router.post("/", verifyToken, async (req, res) => {
   try {
     const { productoId, cantidad } = req.body;
-    if (!productoId) return res.status(400).json({ error: "productoId no recibido" });
+    if (!productoId) return res.status(400).json({ error: "Falta productoId" });
 
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    const productoExistente = user.carrito.find(p => {
+    const existente = user.carrito.find((p) => {
       const id = p.productoId?._id?.toString() || p.productoId?.toString();
       return id === productoId.toString();
     });
 
-    if (productoExistente) {
-      productoExistente.cantidad += cantidad || 1;
+    if (existente) {
+      existente.cantidad += cantidad || 1;
     } else {
       user.carrito.push({ productoId, cantidad: cantidad || 1 });
     }
 
     await user.save();
 
-    // 🔔 Emitir evento Socket.io para sincronización
+    // 🔔 Emitir actualización en tiempo real
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io?.emit(`carrito:${req.userId}`);
 
-    const carritoActualizado = await User.findById(req.userId).populate("carrito.productoId");
-    res.json(carritoActualizado.carrito);
+    const actualizado = await User.findById(req.userId).populate("carrito.productoId");
+    res.json(actualizado.carrito);
   } catch (err) {
     console.error("❌ Error al agregar producto:", err.message);
     res.status(500).json({ error: "Error al agregar producto" });
@@ -62,17 +66,17 @@ router.post("/", verifyToken, async (req, res) => {
 });
 
 //-------------------------------------------------------------
-// 🔹 Actualizar cantidad de un producto
+// 💠 Actualizar cantidad de un producto
 //-------------------------------------------------------------
 router.put("/:id", verifyToken, async (req, res) => {
   try {
     const { cantidad } = req.body;
-    if (cantidad == null) return res.status(400).json({ error: "cantidad no recibida" });
+    if (cantidad == null) return res.status(400).json({ error: "Falta cantidad" });
 
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    const producto = user.carrito.find(p => {
+    const producto = user.carrito.find((p) => {
       const id = p.productoId?._id?.toString() || p.productoId?.toString();
       return id === req.params.id.toString();
     });
@@ -80,7 +84,7 @@ router.put("/:id", verifyToken, async (req, res) => {
     if (!producto) return res.status(404).json({ error: "Producto no encontrado en carrito" });
 
     if (cantidad < 1) {
-      user.carrito = user.carrito.filter(p => {
+      user.carrito = user.carrito.filter((p) => {
         const id = p.productoId?._id?.toString() || p.productoId?.toString();
         return id !== req.params.id.toString();
       });
@@ -91,10 +95,10 @@ router.put("/:id", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io?.emit(`carrito:${req.userId}`);
 
-    const carritoActualizado = await User.findById(req.userId).populate("carrito.productoId");
-    res.json(carritoActualizado.carrito);
+    const actualizado = await User.findById(req.userId).populate("carrito.productoId");
+    res.json(actualizado.carrito);
   } catch (err) {
     console.error("❌ Error al actualizar cantidad:", err.message);
     res.status(500).json({ error: "Error al actualizar cantidad" });
@@ -102,14 +106,14 @@ router.put("/:id", verifyToken, async (req, res) => {
 });
 
 //-------------------------------------------------------------
-// 🔹 Eliminar producto del carrito
+// 💠 Eliminar un producto del carrito
 //-------------------------------------------------------------
 router.delete("/:id", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    user.carrito = user.carrito.filter(p => {
+    user.carrito = user.carrito.filter((p) => {
       const id = p.productoId?._id?.toString() || p.productoId?.toString();
       return id !== req.params.id.toString();
     });
@@ -117,10 +121,10 @@ router.delete("/:id", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io?.emit(`carrito:${req.userId}`);
 
-    const carritoActualizado = await User.findById(req.userId).populate("carrito.productoId");
-    res.json(carritoActualizado.carrito);
+    const actualizado = await User.findById(req.userId).populate("carrito.productoId");
+    res.json(actualizado.carrito);
   } catch (err) {
     console.error("❌ Error al eliminar producto:", err.message);
     res.status(500).json({ error: "Error al eliminar producto" });
@@ -128,7 +132,7 @@ router.delete("/:id", verifyToken, async (req, res) => {
 });
 
 //-------------------------------------------------------------
-// 🔹 Vaciar carrito
+// 💠 Vaciar todo el carrito
 //-------------------------------------------------------------
 router.delete("/", verifyToken, async (req, res) => {
   try {
@@ -139,7 +143,7 @@ router.delete("/", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io?.emit(`carrito:${req.userId}`);
 
     res.json([]);
   } catch (err) {

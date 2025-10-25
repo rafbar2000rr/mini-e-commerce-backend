@@ -1,8 +1,5 @@
 
-const express = require("express");
-const router = express.Router();
-const verifyToken = require("../middleware/verifyToken");
-const User = require("../models/User");
+
 
 //-------------------------------------------------------------
 // 🔹 Inyectar Socket.io en req.app.get("io")
@@ -11,79 +8,102 @@ const User = require("../models/User");
 // const io = new Server(server);
 // app.set("io", io);
 
-//-------------------------------------------------------------
-// 🔹 Obtener carrito del usuario
-//-------------------------------------------------------------
+// backend/routes/carrito.js
+const express = require("express");
+const router = express.Router();
+const verifyToken = require("../middleware/verifyToken");
+const User = require("../models/User");
+const Producto = require("../models/Producto");
+const mongoose = require("mongoose");
+
+// -------------------------------------------------------------
+// 💠 Obtener carrito del usuario
+// -------------------------------------------------------------
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).populate("carrito.productoId");
+    const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-    res.json(user.carrito);
+
+    const carritoMapeado = [];
+
+    for (const item of user.carrito) {
+      let producto = null;
+
+      if (mongoose.Types.ObjectId.isValid(item.productoId)) {
+        producto = await Producto.findById(item.productoId);
+      }
+
+      if (!producto) continue; // Ignora productos eliminados
+
+      carritoMapeado.push({
+        _id: producto._id,
+        nombre: producto.nombre,
+        precio: producto.precio,
+        descripcion: producto.descripcion,
+        imagen: producto.imagen,
+        cantidad: item.cantidad,
+      });
+    }
+
+    res.json(carritoMapeado);
   } catch (err) {
-    console.error("❌ Error al obtener carrito:", err.message);
+    console.error("❌ Error al obtener carrito:", err);
     res.status(500).json({ error: "Error al obtener carrito" });
   }
 });
 
-//-------------------------------------------------------------
-// 🔹 Agregar producto al carrito
-//-------------------------------------------------------------
+// -------------------------------------------------------------
+// 💠 Agregar producto al carrito
+// -------------------------------------------------------------
 router.post("/", verifyToken, async (req, res) => {
   try {
     const { productoId, cantidad } = req.body;
-    if (!productoId) return res.status(400).json({ error: "productoId no recibido" });
+    if (!productoId) return res.status(400).json({ error: "Falta productoId" });
 
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    const productoExistente = user.carrito.find(p => {
-      const id = p.productoId?._id?.toString() || p.productoId?.toString();
-      return id === productoId.toString();
-    });
+    const existente = user.carrito.find(
+      (p) => p.productoId.toString() === productoId.toString()
+    );
 
-    if (productoExistente) {
-      productoExistente.cantidad += cantidad || 1;
+    if (existente) {
+      existente.cantidad += cantidad || 1;
     } else {
       user.carrito.push({ productoId, cantidad: cantidad || 1 });
     }
 
     await user.save();
 
-    // 🔔 Emitir evento Socket.io para sincronización
+    // 🔔 Emitir solo al room del usuario
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
-    const carritoActualizado = await User.findById(req.userId).populate("carrito.productoId");
-    res.json(carritoActualizado.carrito);
+    const actualizado = await User.findById(req.userId);
+    res.json(actualizado.carrito);
   } catch (err) {
-    console.error("❌ Error al agregar producto:", err.message);
+    console.error("❌ Error al agregar producto:", err);
     res.status(500).json({ error: "Error al agregar producto" });
   }
 });
 
-//-------------------------------------------------------------
-// 🔹 Actualizar cantidad de un producto
-//-------------------------------------------------------------
-router.put("/:id", verifyToken, async (req, res) => {
+// -------------------------------------------------------------
+// 💠 Actualizar cantidad de un producto
+// -------------------------------------------------------------
+router.put("/:productoId", verifyToken, async (req, res) => {
   try {
     const { cantidad } = req.body;
-    if (cantidad == null) return res.status(400).json({ error: "cantidad no recibida" });
+    const { productoId } = req.params;
+    if (cantidad == null) return res.status(400).json({ error: "Falta cantidad" });
 
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    const producto = user.carrito.find(p => {
-      const id = p.productoId?._id?.toString() || p.productoId?.toString();
-      return id === req.params.id.toString();
-    });
-
+    const producto = user.carrito.find((p) => p.productoId.toString() === productoId);
     if (!producto) return res.status(404).json({ error: "Producto no encontrado en carrito" });
 
     if (cantidad < 1) {
-      user.carrito = user.carrito.filter(p => {
-        const id = p.productoId?._id?.toString() || p.productoId?.toString();
-        return id !== req.params.id.toString();
-      });
+      user.carrito = user.carrito.filter((p) => p.productoId.toString() !== productoId);
     } else {
       producto.cantidad = cantidad;
     }
@@ -91,45 +111,40 @@ router.put("/:id", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
-    const carritoActualizado = await User.findById(req.userId).populate("carrito.productoId");
-    res.json(carritoActualizado.carrito);
+    res.json(user.carrito);
   } catch (err) {
-    console.error("❌ Error al actualizar cantidad:", err.message);
+    console.error("❌ Error al actualizar cantidad:", err);
     res.status(500).json({ error: "Error al actualizar cantidad" });
   }
 });
 
-//-------------------------------------------------------------
-// 🔹 Eliminar producto del carrito
-//-------------------------------------------------------------
-router.delete("/:id", verifyToken, async (req, res) => {
+// -------------------------------------------------------------
+// 💠 Eliminar un producto del carrito
+// -------------------------------------------------------------
+router.delete("/:productoId", verifyToken, async (req, res) => {
   try {
+    const { productoId } = req.params;
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    user.carrito = user.carrito.filter(p => {
-      const id = p.productoId?._id?.toString() || p.productoId?.toString();
-      return id !== req.params.id.toString();
-    });
-
+    user.carrito = user.carrito.filter((p) => p.productoId.toString() !== productoId);
     await user.save();
 
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
-    const carritoActualizado = await User.findById(req.userId).populate("carrito.productoId");
-    res.json(carritoActualizado.carrito);
+    res.json(user.carrito);
   } catch (err) {
-    console.error("❌ Error al eliminar producto:", err.message);
+    console.error("❌ Error al eliminar producto:", err);
     res.status(500).json({ error: "Error al eliminar producto" });
   }
 });
 
-//-------------------------------------------------------------
-// 🔹 Vaciar carrito
-//-------------------------------------------------------------
+// -------------------------------------------------------------
+// 💠 Vaciar todo el carrito
+// -------------------------------------------------------------
 router.delete("/", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
@@ -139,16 +154,19 @@ router.delete("/", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.emit(`carrito:${req.userId}`);
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
     res.json([]);
   } catch (err) {
-    console.error("❌ Error al vaciar carrito:", err.message);
+    console.error("❌ Error al vaciar carrito:", err);
     res.status(500).json({ error: "Error al vaciar carrito" });
   }
 });
 
 module.exports = router;
+
+
+
 
 
 

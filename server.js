@@ -56,8 +56,12 @@ mongoose.connect(process.env.MONGO_URI, {
 //-------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
+
 const io = new Server(server, {
-  cors: { origin: '*' },
+  cors: {
+    origin: "*", // o el dominio de tu frontend si quieres restringirlo
+    methods: ["GET", "POST", "PUT", "DELETE"],
+  },
 });
 
 //-------------------------------------------------------------

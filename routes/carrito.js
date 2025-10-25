@@ -54,7 +54,7 @@ router.post("/", verifyToken, async (req, res) => {
 
     // 🔔 Emitir actualización solo a la room del usuario
     const io = req.app.get("io");
-    io.to(req.userId).emit("carrito:update");
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
     const actualizado = await User.findById(req.userId).populate("carrito.productoId");
     res.json(actualizado.carrito);
@@ -88,7 +88,7 @@ router.put("/:productoId", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.to(req.userId).emit("carrito:update");
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
     const actualizado = await User.findById(req.userId).populate("carrito.productoId");
     res.json(actualizado.carrito);
@@ -111,7 +111,7 @@ router.delete("/:productoId", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.to(req.userId).emit("carrito:update");
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
     const actualizado = await User.findById(req.userId).populate("carrito.productoId");
     res.json(actualizado.carrito);
@@ -133,7 +133,7 @@ router.delete("/", verifyToken, async (req, res) => {
     await user.save();
 
     const io = req.app.get("io");
-    io.to(req.userId).emit("carrito:update");
+    io.to(req.userId).emit(`carrito:${req.userId}`);
 
     res.json([]);
   } catch (err) {
@@ -143,6 +143,7 @@ router.delete("/", verifyToken, async (req, res) => {
 });
 
 module.exports = router;
+
 
 
 

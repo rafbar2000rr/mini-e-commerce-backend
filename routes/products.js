@@ -1,20 +1,26 @@
 const express = require('express');
 const router = express.Router();
 const Producto = require('../models/Producto');
-const multer = require('multer');
+const { upload } = require('../config/cloudinary');
 const path = require('path');
 const fs = require('fs');
-const { authMiddleware, adminMiddleware } = require("../middleware/auth");
+//const { authMiddleware, adminMiddleware } = require("../middleware/auth");
 const verifyToken = require('../middleware/verifyToken');
+const cloudinary = require("../config/cloudinaryConfig");
+
+const multer = require('multer');
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
 
 //---------------------------------------------------------
 // 📦 Configuración de Multer para subir imágenes
 //---------------------------------------------------------
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
-});
-const upload = multer({ storage });
+// const storage = multer.diskStorage({
+//   destination: (req, file, cb) => cb(null, 'uploads/'),
+//   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+// });
+// const upload = multer({ storage });
 
 //---------------------------------------------------------
 // 🔹 Función interna para obtener productos (admin o público)
@@ -59,30 +65,87 @@ async function obtenerProductos(req, res, isAdmin = false) {
 //---------------------------------------------------------
 // 🆕 Crear producto → Solo admin
 //---------------------------------------------------------
-router.post('/productos', verifyToken, upload.single('imagen'), async (req, res) => {
+router.post("/productos", verifyToken, upload.single("imagen"), async (req, res) => {
   try {
     const { nombre, precio, descripcion, categoria, stock } = req.body;
+    let imagenUrl = null;
 
-    const nuevoProducto = new Producto({
-      nombre,
-      precio: precio ? Number(precio) : 0,
-      descripcion,
-      categoria,
-      stock: stock ? Number(stock) : 0,
-      imagen: req.file ? req.file.filename : null,
-    });
+    // 📤 Subir imagen a Cloudinary
+    if (req.file) {
+      const result = await cloudinary.uploader.upload_stream(
+        { folder: "productos" },
+        (error, result) => {
+          if (error) {
+            console.error("❌ Error al subir a Cloudinary:", error);
+            return res.status(500).json({ error: "Error al subir imagen" });
+          }
 
-    await nuevoProducto.save();
+          // Crear producto con URL de Cloudinary
+          const nuevoProducto = new Producto({
+            nombre,
+            precio: precio ? Number(precio) : 0,
+            descripcion,
+            categoria,
+            stock: stock ? Number(stock) : 0,
+            imagen: result.secure_url, // ✅ URL pública
+          });
 
-    res.status(201).json({
-      message: 'Producto creado correctamente',
-      producto: nuevoProducto,
-    });
+          nuevoProducto.save();
+          res.status(201).json({
+            message: "Producto creado correctamente",
+            producto: nuevoProducto,
+          });
+        }
+      );
+
+      // Es necesario enviar el buffer de la imagen a Cloudinary
+      result.end(req.file.buffer);
+    } else {
+      // Si no hay imagen
+      const nuevoProducto = new Producto({
+        nombre,
+        precio: precio ? Number(precio) : 0,
+        descripcion,
+        categoria,
+        stock: stock ? Number(stock) : 0,
+        imagen: null,
+      });
+      await nuevoProducto.save();
+      res.status(201).json({
+        message: "Producto creado sin imagen",
+        producto: nuevoProducto,
+      });
+    }
   } catch (error) {
-    console.error('❌ Error al crear el producto:', error);
-    res.status(500).json({ error: 'Error al crear el producto' });
+    console.error("❌ Error al crear el producto:", error);
+    res.status(500).json({ error: "Error al crear el producto" });
   }
 });
+
+// router.post('/productos', verifyToken, upload.single('imagen'), async (req, res) => {
+//   try {
+//     const { nombre, precio, descripcion, categoria, stock } = req.body;
+
+//     const nuevoProducto = new Producto({
+//       nombre,
+//       precio: precio ? Number(precio) : 0,
+//       descripcion,
+//       categoria,
+//       stock: stock ? Number(stock) : 0,
+//       imagen: req.file ? req.file.filename : null,
+//     });
+
+//     await nuevoProducto.save();
+
+//     res.status(201).json({
+//       message: 'Producto creado correctamente',
+//       producto: nuevoProducto,
+//     });
+//   } catch (error) {
+//     console.error('❌ Error al crear el producto:', error);
+//     res.status(500).json({ error: 'Error al crear el producto' });
+//   }
+// });
 
 //---------------------------------------------------------
 // 📜 Listado de productos → Admin
@@ -101,63 +164,139 @@ router.get('/catalogo', (req, res) => {
 //---------------------------------------------------------
 // ✏ Actualizar producto → Solo admin
 //---------------------------------------------------------
-router.put('/productos/:id', verifyToken, upload.single('imagen'), async (req, res) => {
+router.put("/productos/:id", verifyToken, upload.single("imagen"), async (req, res) => {
   try {
     const { nombre, precio, descripcion, categoria, stock, imagen: imagenURL } = req.body;
+    const producto = await Producto.findById(req.params.id);
+    if (!producto) return res.status(404).json({ mensaje: "Producto no encontrado" });
 
+    // Datos que se pueden actualizar
     const updateData = {
       nombre,
-      precio: precio ? Number(precio) : undefined,
+      precio: precio ? Number(precio) : producto.precio,
       descripcion,
       categoria,
-      stock: stock ? Number(stock) : undefined,
+      stock: stock ? Number(stock) : producto.stock,
     };
 
-    if (req.file) updateData.imagen = req.file.filename;
-    else if (imagenURL) updateData.imagen = imagenURL;
+    // Si se sube una nueva imagen, la enviamos a Cloudinary
+    if (req.file) {
+      const result = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { folder: "productos" },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(req.file.buffer);
+      });
 
-    Object.keys(updateData).forEach(
-      key => updateData[key] === undefined && delete updateData[key]
-    );
+      // ✅ Guardar URL pública de Cloudinary
+      updateData.imagen = result.secure_url;
+    } else if (imagenURL) {
+      updateData.imagen = imagenURL;
+    }
 
-    const productoActualizado = await Producto.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true }
-    );
+    // Actualizar el producto en MongoDB
+    const productoActualizado = await Producto.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+    });
 
-    if (!productoActualizado) return res.status(404).json({ mensaje: 'Producto no encontrado' });
-
-    res.json(productoActualizado);
+    res.json({
+      message: "Producto actualizado correctamente",
+      producto: productoActualizado,
+    });
   } catch (error) {
     console.error("❌ Error al actualizar producto:", error);
-    res.status(500).json({ mensaje: 'Error al actualizar producto' });
+    res.status(500).json({ mensaje: "Error al actualizar producto" });
   }
 });
+
+// router.put('/productos/:id', verifyToken, upload.single('imagen'), async (req, res) => {
+//   try {
+//     const { nombre, precio, descripcion, categoria, stock, imagen: imagenURL } = req.body;
+
+//     const updateData = {
+//       nombre,
+//       precio: precio ? Number(precio) : undefined,
+//       descripcion,
+//       categoria,
+//       stock: stock ? Number(stock) : undefined,
+//     };
+
+//     if (req.file) updateData.imagen = req.file.filename;
+//     else if (imagenURL) updateData.imagen = imagenURL;
+
+//     Object.keys(updateData).forEach(
+//       key => updateData[key] === undefined && delete updateData[key]
+//     );
+
+//     const productoActualizado = await Producto.findByIdAndUpdate(
+//       req.params.id,
+//       updateData,
+//       { new: true }
+//     );
+
+//     if (!productoActualizado) return res.status(404).json({ mensaje: 'Producto no encontrado' });
+
+//     res.json(productoActualizado);
+//   } catch (error) {
+//     console.error("❌ Error al actualizar producto:", error);
+//     res.status(500).json({ mensaje: 'Error al actualizar producto' });
+//   }
+// });
 
 //---------------------------------------------------------
 // 🗑 Eliminar producto → Solo admin
 //---------------------------------------------------------
-router.delete('/productos/:id', verifyToken, async (req, res) => {
+router.delete("/productos/:id", verifyToken, async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
-    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+    if (!producto) return res.status(404).json({ error: "Producto no encontrado" });
 
-    if (producto.imagen && !producto.imagen.startsWith('http')) {
-      const rutaImagen = path.join(__dirname, '..', 'uploads', producto.imagen);
-      fs.unlink(rutaImagen, err => {
-        if (err) console.error('⚠️ Error al borrar imagen:', err.message);
-        else console.log('🗑️ Imagen borrada:', producto.imagen);
-      });
+    // 🔹 Si tiene imagen en Cloudinary, la borramos
+    if (producto.imagen && producto.imagen.startsWith("https://res.cloudinary.com/")) {
+      // Extraer public_id de la URL
+      const publicId = producto.imagen
+        .split("/")
+        .slice(-1)[0]
+        .split(".")[0]; // nombre de archivo sin extensión
+
+      await cloudinary.uploader.destroy(`productos/${publicId}`);
+      console.log("🗑️ Imagen borrada de Cloudinary:", publicId);
     }
 
+    // 🔹 Eliminar producto de MongoDB
     await Producto.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Producto eliminado correctamente' });
+
+    res.json({ message: "Producto eliminado correctamente" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error al eliminar el producto' });
+    console.error("❌ Error al eliminar producto:", error);
+    res.status(500).json({ error: "Error al eliminar el producto" });
   }
 });
+
+// router.delete('/productos/:id', verifyToken, async (req, res) => {
+//   try {
+//     const producto = await Producto.findById(req.params.id);
+//     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+
+//     if (producto.imagen && !producto.imagen.startsWith('http')) {
+//       const rutaImagen = path.join(__dirname, '..', 'uploads', producto.imagen);
+//       fs.unlink(rutaImagen, err => {
+//         if (err) console.error('⚠️ Error al borrar imagen:', err.message);
+//         else console.log('🗑️ Imagen borrada:', producto.imagen);
+//       });
+//     }
+
+//     await Producto.findByIdAndDelete(req.params.id);
+//     res.json({ message: 'Producto eliminado correctamente' });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: 'Error al eliminar el producto' });
+//   }
+// });
 
 //---------------------------------------------------------
 // 🔹 Obtener un producto por ID → Público

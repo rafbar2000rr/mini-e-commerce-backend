@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 🔹 Importar rutas
+// 🔹 Rutas
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
@@ -19,7 +19,6 @@ const carritoRoutes = require('./routes/carrito');
 const categoriaRoutes = require('./routes/categorias');
 const paypalRoutes = require('./routes/paypal');
 
-// 🔹 Usar rutas
 app.use('/api', authRoutes);
 app.use('/api', productRoutes);
 app.use('/api', orderRoutes);
@@ -31,10 +30,7 @@ app.use('/api/paypal', paypalRoutes);
 app.get('/', (req, res) => res.send('✅ API funcionando correctamente'));
 
 // 🔹 Conexión a MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ Conectado a MongoDB Atlas'))
   .catch(err => console.error('❌ Error al conectar a MongoDB', err));
 
@@ -43,37 +39,31 @@ const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-  },
+  cors: { origin: "*", methods: ["GET", "POST", "PUT", "DELETE"] },
 });
-
-// 🔹 Hacer io accesible en rutas
-app.set("io", io);
 
 // 🔹 Eventos Socket.io
 io.on('connection', (socket) => {
   console.log('🟢 Usuario conectado:', socket.id);
 
-  // Unirse a room del usuario
+  // 🔹 Unirse a su room
   socket.on('join', (usuarioId) => {
-    if (!usuarioId) return;
     socket.join(usuarioId);
-    console.log(`Usuario ${socket.id} se unió a room: ${usuarioId}`);
+    console.log(`👤 Usuario ${usuarioId} se unió a su room`);
   });
 
-  // Emitir actualización del carrito a todos los dispositivos del usuario
+  // 🔹 Emitir solo al usuario correspondiente
   socket.on('carrito:update', (usuarioId) => {
-    if (!usuarioId) return;
     io.to(usuarioId).emit(`carrito:${usuarioId}`);
-    console.log(`🟡 Actualización carrito emitida a room ${usuarioId}`);
   });
 
   socket.on('disconnect', () => {
     console.log('🔴 Usuario desconectado:', socket.id);
   });
 });
+
+// 🔹 Guardar io en app para usarlo en rutas
+app.set("io", io);
 
 // 🔹 Iniciar servidor
 server.listen(PORT, () => console.log(`🚀 Servidor corriendo en el puerto ${PORT}`));

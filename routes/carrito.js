@@ -9,13 +9,15 @@ router.get("/", verifyToken, async (req, res) => {
     // Buscar el usuario autenticado usando el id que viene en el token
     const user = await User.findById(req.userId).populate("carrito.productoId");
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-    // Devolver solo el carrito
-    res.json(user.carrito);
+
+    // ✅ Devolver carrito en formato esperado por el frontend
+    res.json({ productos: user.carrito });
   } catch (err) {
     console.error("❌ Error al obtener carrito:", err.message);
     res.status(500).json({ error: "Error al obtener carrito" });
   }
 });
+
 
 //---------------------------------------------------------------------------------
 // 🔹 Agregar producto al carrito. Busca el usuario por su token.Verifica si el producto ya estaba en el carrito.

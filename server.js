@@ -21,8 +21,7 @@ app.use('/api', authRoutes);
 //app.use("/api/me", authRoutes);
 app.use('/api', productRoutes);
 app.use('/api', orderRoutes);
-app.use('/api', carritoRoutes);
-app.use('api/carrito', carritoRoutes);
+app.use('/api/carrito', carritoRoutes);
 app.use('/api', categoriaRoutes);
 app.use('/api/paypal', paypalRoutes);
 

@@ -44,19 +44,32 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*", // Puedes restringirlo a tu dominio de frontend si deseas
+    origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
+
+// 🔹 Hacer io accesible en rutas
+app.set("io", io);
 
 // 🔹 Eventos Socket.io
 io.on('connection', (socket) => {
   console.log('🟢 Usuario conectado:', socket.id);
 
-  socket.on('carrito:update', (usuarioId) => {
-    socket.broadcast.emit(`carrito:${usuarioId}`);
+  // Unirse a room del usuario
+  socket.on('join', (usuarioId) => {
+    if (!usuarioId) return;
+    socket.join(usuarioId);
+    console.log(`Usuario ${socket.id} se unió a room: ${usuarioId}`);
   });
-app.set("io", io);
+
+  // Emitir actualización del carrito a todos los dispositivos del usuario
+  socket.on('carrito:update', (usuarioId) => {
+    if (!usuarioId) return;
+    io.to(usuarioId).emit(`carrito:${usuarioId}`);
+    console.log(`🟡 Actualización carrito emitida a room ${usuarioId}`);
+  });
+
   socket.on('disconnect', () => {
     console.log('🔴 Usuario desconectado:', socket.id);
   });

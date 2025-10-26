@@ -27,20 +27,19 @@ router.get("/", verifyToken, async (req, res) => {
     const carritoMapeado = [];
 
     for (const item of user.carrito) {
-      let producto = null;
+      if (!mongoose.Types.ObjectId.isValid(item.productoId)) continue;
 
-      if (mongoose.Types.ObjectId.isValid(item.productoId)) {
-        producto = await Producto.findById(item.productoId);
-      }
-
-      if (!producto) continue; // Ignora productos eliminados
+      const producto = await Producto.findById(item.productoId);
+      if (!producto) continue;
 
       carritoMapeado.push({
-        _id: producto._id,
-        nombre: producto.nombre,
-        precio: producto.precio,
-        descripcion: producto.descripcion,
-        imagen: producto.imagen,
+        productoId: {
+          _id: producto._id,
+          nombre: producto.nombre,
+          precio: producto.precio,
+          descripcion: producto.descripcion,
+          imagen: producto.imagen,
+        },
         cantidad: item.cantidad,
       });
     }
@@ -164,6 +163,7 @@ router.delete("/", verifyToken, async (req, res) => {
 });
 
 module.exports = router;
+
 
 
 

@@ -84,6 +84,7 @@ router.post("/login", async (req, res) => {
         id: user._id,
         nombre: user.nombre,
         email: user.email,
+        rol: user.rol,
       },
     });
   } catch (error) {

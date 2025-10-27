@@ -6,7 +6,6 @@ const verifyToken = require("../middleware/verifyToken");
 const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
-const { authMiddleware, adminMiddleware } = require("../middleware/auth");
 const isAdmin = require("../middleware/isAdmin");
 
 //---------------------------------------------------------------------------------------------
@@ -206,7 +205,7 @@ router.get("/my-orders", verifyToken, async (req, res) => {
 });
 //-------------------------------------------------------------------
 // ✅ Obtener todas las órdenes de todos los usuarios (para admin)
-const isAdmin = require("../middleware/isAdmin");
+
 
 // Solo admins pueden ver todas las órdenes
 router.get("/orders", verifyToken, isAdmin, async (req, res) => {

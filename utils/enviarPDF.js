@@ -3,7 +3,7 @@ const PDFDocument = require("pdfkit");
 const axios = require("axios");
 
 //-------------------------------------------------------------------------------
-// 📌 Genera un PDF en memoria usando imágenes remotas a la derecha del nombre y precio
+// 📌 Genera un PDF estilo catálogo profesional con cajas sombreadas
 //-------------------------------------------------------------------------------
 async function generarPDF(orden) {
   return new Promise(async (resolve, reject) => {
@@ -19,12 +19,12 @@ async function generarPDF(orden) {
       // 🎀 Encabezado
       //-----------------------------------------------
       doc.fillColor("#D63384")
-        .fontSize(20)
-        .text("Detalle de la Orden", { align: "center" });
+        .fontSize(22)
+        .text("Detalle de la Orden", { align: "center", underline: true });
       doc.moveDown(1);
 
       //-----------------------------------------------
-      // ID, fecha y total de la orden
+      // ID, fecha y total
       //-----------------------------------------------
       doc.fillColor("black").fontSize(12);
       doc.text(`ID de la Orden: ${orden._id}`);
@@ -49,7 +49,7 @@ async function generarPDF(orden) {
       doc.moveDown(1);
 
       //-----------------------------------------------
-      // 📌 Productos de la orden (imagen a la derecha)
+      // 📌 Productos de la orden
       //-----------------------------------------------
       doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
         "Productos:",
@@ -62,14 +62,21 @@ async function generarPDF(orden) {
         const yInicio = doc.y;
 
         //-----------------------------------------------
+        // 🔹 Caja sombreada por producto
+        //-----------------------------------------------
+        doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
+        doc.fillOpacity(1); // reset
+
+        //-----------------------------------------------
         // 🔹 Datos del producto (nombre y precio)
         //-----------------------------------------------
         const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
         const precio = p.productoId?.precio ?? p.precio ?? 0;
-        doc.font("Helvetica-Bold").fillColor("black").fontSize(12)
-          .text(nombre, 50, yInicio, { width: 350 });
-        doc.font("Helvetica").fillColor("black").fontSize(12)
-          .text(`$${precio} x ${p.cantidad ?? 1}`, 50, yInicio + 15, { width: 350 });
+
+        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
+          .text(nombre, 60, yInicio, { width: 350 });
+        doc.font("Helvetica").fillColor("#555").fontSize(12)
+          .text(`$${precio} x ${p.cantidad ?? 1}`, 60, yInicio + 18, { width: 350 });
 
         //-----------------------------------------------
         // 🔹 Miniatura a la derecha
@@ -79,17 +86,17 @@ async function generarPDF(orden) {
           try {
             const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
             const buffer = Buffer.from(response.data, "binary");
-            doc.image(buffer, 410, yInicio, { width: 80, height: 80 });
+            doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80], align: "right" });
           } catch (err) {
             console.error("❌ Error cargando imagen remota:", err.message);
           }
         }
 
         //-----------------------------------------------
-        // 🔹 Separador
+        // 🔹 Separador elegante
         //-----------------------------------------------
-        doc.moveDown(5);
-        doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ddd").stroke();
+        doc.moveDown(6);
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
         doc.moveDown(0.5);
       }
 
@@ -99,7 +106,7 @@ async function generarPDF(orden) {
       doc.moveDown(1);
       doc.fontSize(10)
         .fillColor("#555")
-        .text("Gracias por tu compra", { align: "center" });
+        .text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
 
       doc.end();
     } catch (err) {

@@ -5,6 +5,10 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 require('dotenv').config();
+// Verificar variables de Cloudinary
+console.log("🔑 CLOUDINARY_API_KEY:", process.env.CLOUDINARY_API_KEY);
+console.log("☁️ CLOUDINARY_CLOUD_NAME:", process.env.CLOUDINARY_CLOUD_NAME);
+console.log("🔒 CLOUDINARY_API_SECRET:", process.env.CLOUDINARY_API_SECRET ? "Existe" : "No definida");
 
 const app = express();
 app.use(cors());

@@ -6,7 +6,7 @@ const bcrypt = require("bcryptjs");
 const verifyToken = require("../middleware/verifyToken"); 
 
 router.post("/register", async (req, res) => {
-  const { nombre, email, password } = req.body;
+  const { nombre, email, password, rol } = req.body;
 
   if (!nombre || !email || !password) {
     return res.status(400).json({ error: "Todos los campos son obligatorios" });
@@ -24,8 +24,12 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "El correo ya está registrado" });
     }
 
-    // ⚠️ El modelo ya encripta la contraseña automáticamente
-    const newUser = new User({ nombre, email, password });
+    const newUser = new User({
+      nombre,
+      email,
+      password,
+      rol: rol || "cliente", // 💜 agrega esta línea
+    });
     await newUser.save();
 
     const token = jwt.sign(
@@ -41,6 +45,7 @@ router.post("/register", async (req, res) => {
         id: newUser._id,
         nombre: newUser.nombre,
         email: newUser.email,
+        rol: newUser.rol, // 💖 y envíalo también
       },
     });
   } catch (error) {
@@ -50,8 +55,6 @@ router.post("/register", async (req, res) => {
       .json({ error: "Error al registrar el usuario", details: error.message });
   }
 });
-
-
 
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;

@@ -7,6 +7,7 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
 const { authMiddleware, adminMiddleware } = require("../middleware/auth");
+const isAdmin = require("../middleware/isAdmin");
 
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
@@ -205,12 +206,15 @@ router.get("/my-orders", verifyToken, async (req, res) => {
 });
 //-------------------------------------------------------------------
 // ✅ Obtener todas las órdenes de todos los usuarios (para admin)
-router.get("/orders", async (req, res) => {
+const isAdmin = require("../middleware/isAdmin");
+
+// Solo admins pueden ver todas las órdenes
+router.get("/orders", verifyToken, isAdmin, async (req, res) => {
   try {
     const ordenes = await Order.find()
-      .populate("usuario", "nombre email") // 👈 Trae nombre y email del usuario
-      .populate("productos.productoId")    // 👈 Trae detalles del producto
-      .sort({ fecha: -1 });                // Ordena de más reciente a más antigua
+      .populate("usuario", "nombre email rol") // 👈 Trae nombre, email y rol del usuario
+      .populate("productos.productoId")// 👈 Trae detalles del producto
+      .sort({ fecha: -1 });// Ordena de más reciente a más antigua
 
     res.json(ordenes);
   } catch (error) {
@@ -221,10 +225,8 @@ router.get("/orders", async (req, res) => {
 
 //-----------------------------------------------------------------------
 // ✅ Actualizar estado de una orden (pendiente → enviado → entregado)
-
-
 router.patch(
-  "/orders/:id", verifyToken,
+  "/orders/:id", verifyToken, isAdmin,
        // 🔹 Verifica que el usuario esté logueado
        // 🔹 Verifica que sea admin
   async (req, res) => {

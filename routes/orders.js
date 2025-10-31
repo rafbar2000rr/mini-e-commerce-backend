@@ -7,9 +7,7 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
 const isAdmin = require("../middleware/isAdmin");
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-import fetch from "node-fetch";
+
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
 // Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos

@@ -211,16 +211,31 @@ router.get("/my-orders", verifyToken, async (req, res) => {
 router.get("/orders", verifyToken, isAdmin, async (req, res) => {
   try {
     const ordenes = await Order.find()
-      .populate("usuario", "nombre email rol") // 👈 Trae nombre, email y rol del usuario
-      .populate("productos.productoId")// 👈 Trae detalles del producto
-      .sort({ fecha: -1 });// Ordena de más reciente a más antigua
+      .populate("usuario", "nombre email rol")
+      .populate("productos.productoId", "nombre precio imagen")
+      .sort({ fecha: -1 });
 
-    res.json(ordenes);
+    // 🧩 Aplanamos los productos para que incluyan directamente nombre, precio y cantidad
+    const ordenesFormateadas = ordenes.map((orden) => ({
+      _id: orden._id,
+      usuario: orden.usuario,
+      total: orden.total,
+      estado: orden.estado,
+      fecha: orden.fecha,
+      productos: orden.productos.map((p) => ({
+        nombre: p.productoId?.nombre || "Producto eliminado",
+        precio: p.productoId?.precio || 0,
+        cantidad: p.cantidad,
+      })),
+    }));
+
+    res.json(ordenesFormateadas);
   } catch (error) {
     console.error("❌ Error al obtener todas las órdenes:", error.message);
     res.status(500).json({ error: "Error al obtener todas las órdenes" });
   }
 });
+
 
 //-----------------------------------------------------------------------
 // ✅ Actualizar estado de una orden (pendiente → enviado → entregado)

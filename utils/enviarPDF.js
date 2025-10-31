@@ -4,73 +4,117 @@ const axios = require("axios");
 const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 const { Buffer } = require("buffer");
 
-
-
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
-
-
 // 🧠 Función para generar el PDF de la orden
 async function generarPDF(orden) {
-  const { usuario, productos, total } = orden;
+  return new Promise(async (resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers = [];
 
-  // 🪄 Creamos el PDF en memoria
-  const doc = new PDFDocument({ margin: 40 });
-  const chunks = [];
-  doc.on("data", (chunk) => chunks.push(chunk));
-  const pdfPromise = new Promise((resolve) => {
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-  });
+      doc.on("data", buffers.push.bind(buffers));
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
 
-  // 🧾 Encabezado
-  doc.fontSize(18).text("Order Summary", { align: "center" });
-  doc.moveDown();
-  doc.fontSize(12).text(`Order ID: ${orden._id}`);
-  doc.text(`Customer: ${usuario.nombre}`);
-  doc.text(`Email: ${usuario.email}`);
-  doc.moveDown();
+      // ------------------------------------------
+      // 💖 ENCABEZADO
+      // ------------------------------------------
+      doc.fillColor("#D63384")
+        .fontSize(22)
+        .text("Detalle de la Orden", { align: "center", underline: true });
+      doc.moveDown(1);
 
-  // 🛍️ Título productos
-  doc.fontSize(14).text("Purchased Products:");
-  doc.moveDown(0.5);
+      // ------------------------------------------
+      // 📄 INFORMACIÓN GENERAL
+      // ------------------------------------------
+      doc.fillColor("black").fontSize(12);
+      doc.text(`ID de la Orden: ${orden._id}`);
+      doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
+      doc.font("Helvetica-Bold").text(`Total: $${orden.total.toFixed(2)}`);
+      doc.moveDown(1);
 
-  // 📦 Lista de productos
-  for (const item of productos) {
-    const producto = item.productoId;
-    const subtotal = producto.precio * item.cantidad;
+      // ------------------------------------------
+      // 👤 DATOS DEL CLIENTE
+      // ------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Datos del Cliente:", { underline: true });
+      doc.moveDown(0.5);
+      doc.font("Helvetica").fillColor("black");
+      doc.text(`Nombre: ${orden.datosCliente?.nombre || "No disponible"}`);
+      doc.text(`Email: ${orden.datosCliente?.email || "No disponible"}`);
+      doc.text(`Dirección: ${orden.datosCliente?.direccion || "No disponible"}`);
+      doc.text(`Ciudad: ${orden.datosCliente?.ciudad || "No disponible"}`);
+      doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal || "No disponible"}`);
+      doc.moveDown(1.2);
 
-    // 🔹 Cargar imagen si existe
-    if (producto.imagen) {
-      try {
-        const response = await axios.get(producto.imagen, { responseType: "arraybuffer" });
-        const imgBuffer = Buffer.from(response.data);
-        doc.image(imgBuffer, { width: 60, height: 60, align: "left" });
-      } catch (error) {
-        doc.text("[Image not available]");
+      // ------------------------------------------
+      // 🛍️ LISTA DE PRODUCTOS
+      // ------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Productos:", { underline: true });
+      doc.moveDown(0.8);
+
+      for (const p of orden.productos) {
+        const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
+        const precio = p.productoId?.precio ?? p.precio ?? 0;
+        const cantidad = p.cantidad ?? 1;
+        const imgUrl = p.productoId?.imagen || p.imagen;
+
+        const boxHeight = 95; // altura total de la caja de producto
+
+        // 💡 Si no hay espacio suficiente, nueva página
+        if (doc.y + boxHeight > doc.page.height - doc.page.margins.bottom - 20) {
+          doc.addPage();
+        }
+
+        // 🔲 Caja de fondo
+        const boxY = doc.y;
+        doc.save();
+        doc.rect(45, boxY - 5, 510, boxHeight).fillOpacity(0.05).fill("#000").restore();
+
+        // 📄 Nombre y precio
+        doc.font("Helvetica-Bold").fillColor("#111").fontSize(12)
+          .text(nombre, 60, boxY + 5, { width: 340 });
+        doc.font("Helvetica").fillColor("#555").fontSize(11)
+          .text(`$${precio} x ${cantidad}`, 60, boxY + 25, { width: 340 });
+
+        // 🖼️ Imagen (si existe)
+        if (imgUrl) {
+          try {
+            const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
+            const buffer = Buffer.from(response.data, "binary");
+
+            // Ajuste automático sin cortar imagen
+            doc.image(buffer, 420, boxY, { width: 80, height: 80, fit: [80, 80] });
+          } catch (err) {
+            console.error("❌ Error al cargar imagen:", err.message);
+          }
+        }
+
+        // ✨ Separador visual
+        doc.moveDown(6);
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
+        doc.moveDown(0.5);
       }
-    } else {
-      doc.text("[No image]");
+
+      // ------------------------------------------
+      // 🌸 PIE DE PÁGINA
+      // ------------------------------------------
+      if (doc.y + 60 > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+      }
+      doc.moveDown(2);
+      doc.fontSize(10)
+        .fillColor("#555")
+        .text("Gracias por tu compra. 💕 ¡Esperamos verte pronto!", { align: "center" });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
     }
-
-    // 🔹 Texto al lado
-    doc.fontSize(12).text(`Product: ${producto.nombre}`);
-    doc.text(`Price: $${producto.precio.toFixed(2)}`);
-    doc.text(`Quantity: ${item.cantidad}`);
-    doc.text(`Subtotal: $${subtotal.toFixed(2)}`);
-    doc.moveDown(1);
-
-    // 🔹 Evita que se corte al final de la página
-    if (doc.y > 700) doc.addPage();
-  }
-
-  // 💰 Total
-  doc.moveDown();
-  doc.fontSize(14).text(`Total: $${total.toFixed(2)}`, { align: "right" });
-
-  doc.end();
-  return pdfPromise;
+  });
 }
+
+
 
 
 

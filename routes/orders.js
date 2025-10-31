@@ -196,18 +196,25 @@ router.get("/my-orders", verifyToken, async (req, res) => {
     console.log("👤 Buscando órdenes para usuario:", userId);
 
     const ordenes = await Order.find({ usuario: userId })
-      .select("productos total estado datosCliente fecha")
+      .select("productos total estado status datosCliente fecha")
       .populate("productos.productoId", "nombre precio imagen")
       .sort({ fecha: -1 });
 
-    // 🧩 Aplanamos los productos para devolver datos listos para mostrar
-    productos: orden.productos.map((p) => ({
-  nombre: p.productoId?.nombre || p.nombre || "Producto eliminado",
-  precio: p.productoId?.precio || p.precioCompra || 0,
-  imagen: p.productoId?.imagen || p.imagen || null,
-  cantidad: p.cantidad,
-})),
-
+    const ordenesFormateadas = ordenes.map((orden) => ({
+      _id: orden._id,
+      total: orden.total,
+      estado: orden.estado,
+      status: orden.status,
+      fecha: orden.fecha,
+      datosCliente: orden.datosCliente,
+      productos: orden.productos.map((p) => ({
+        nombre: p.productoId?.nombre || p.nombre || "Producto eliminado",
+        precio: p.productoId?.precio || p.precio || 0,
+        imagen:
+          p.productoId?.imagen || p.imagen || "/placeholder.png", // 👈 siempre devuelve algo
+        cantidad: p.cantidad,
+      })),
+    }));
 
     console.log("📦 Órdenes enviadas al cliente:", ordenesFormateadas.length);
     res.json(ordenesFormateadas);
@@ -216,6 +223,7 @@ router.get("/my-orders", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Error al obtener tus órdenes" });
   }
 });
+
 
 //-------------------------------------------------------------------
 // ✅ Obtener todas las órdenes de todos los usuarios (para admin)

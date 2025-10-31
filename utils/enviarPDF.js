@@ -3,87 +3,74 @@ const PDFDocument = require("pdfkit");
 const axios = require("axios");
 const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 const { Buffer } = require("buffer");
-const {
-  Image,
-  Paragraph,
-  Table,
-  TableStyle,
-  Spacer,
-} = require("reportlab").platypus;
-const { colors } = require("reportlab").lib;
+
 
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
 
+// 🧠 Función para generar el PDF de la orden
 async function generarPDF(orden) {
   const { usuario, productos, total } = orden;
 
-  // 🧠 Función para cargar imágenes de forma segura
-  async function obtenerImagenSegura(url) {
-    try {
-      const response = await axios.get(url, { responseType: "arraybuffer" });
-      const imgBuffer = Buffer.from(response.data);
-      return new Image(imgBuffer, { width: 80, height: 80 });
-    } catch (error) {
-      console.warn("⚠️ No se pudo cargar la imagen:", url);
-      return null;
-    }
-  }
-
-  const elementos = [];
+  // 🪄 Creamos el PDF en memoria
+  const doc = new PDFDocument({ margin: 40 });
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
+  const pdfPromise = new Promise((resolve) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+  });
 
   // 🧾 Encabezado
-  elementos.push(new Paragraph(`<b>Order ID:</b> ${orden._id}`));
-  elementos.push(new Paragraph(`<b>Customer:</b> ${usuario.nombre}`));
-  elementos.push(new Paragraph(`<b>Email:</b> ${usuario.email}`));
-  elementos.push(new Spacer(1, 12));
+  doc.fontSize(18).text("Order Summary", { align: "center" });
+  doc.moveDown();
+  doc.fontSize(12).text(`Order ID: ${orden._id}`);
+  doc.text(`Customer: ${usuario.nombre}`);
+  doc.text(`Email: ${usuario.email}`);
+  doc.moveDown();
 
-  // 🛍️ Título
-  elementos.push(new Paragraph("<b>Purchased Products:</b>"));
-  elementos.push(new Spacer(1, 12));
+  // 🛍️ Título productos
+  doc.fontSize(14).text("Purchased Products:");
+  doc.moveDown(0.5);
 
-  // 🧱 Tabla de productos
-  const tablaData = [["Image", "Product", "Price", "Quantity", "Subtotal"]];
-
+  // 📦 Lista de productos
   for (const item of productos) {
     const producto = item.productoId;
     const subtotal = producto.precio * item.cantidad;
 
-    // Cargar imagen de forma segura
-    const img = await obtenerImagenSegura(producto.imagen);
+    // 🔹 Cargar imagen si existe
+    if (producto.imagen) {
+      try {
+        const response = await axios.get(producto.imagen, { responseType: "arraybuffer" });
+        const imgBuffer = Buffer.from(response.data);
+        doc.image(imgBuffer, { width: 60, height: 60, align: "left" });
+      } catch (error) {
+        doc.text("[Image not available]");
+      }
+    } else {
+      doc.text("[No image]");
+    }
 
-    tablaData.push([
-      img ? img : "Image not available",
-      producto.nombre,
-      `$${producto.precio.toFixed(2)}`,
-      item.cantidad.toString(),
-      `$${subtotal.toFixed(2)}`,
-    ]);
+    // 🔹 Texto al lado
+    doc.fontSize(12).text(`Product: ${producto.nombre}`);
+    doc.text(`Price: $${producto.precio.toFixed(2)}`);
+    doc.text(`Quantity: ${item.cantidad}`);
+    doc.text(`Subtotal: $${subtotal.toFixed(2)}`);
+    doc.moveDown(1);
+
+    // 🔹 Evita que se corte al final de la página
+    if (doc.y > 700) doc.addPage();
   }
 
-  const tabla = new Table(tablaData, { repeatRows: 1 });
-  tabla.setStyle(
-    new TableStyle({
-      alignment: "CENTER",
-      grid: { color: colors.black, width: 0.5 },
-      background: { start: [0, 0], end: [-1, 0], color: colors.lightgrey },
-      padding: 6,
-    })
-  );
-
-  elementos.push(tabla);
-  elementos.push(new Spacer(1, 20));
-
   // 💰 Total
-  elementos.push(new Paragraph(`<b>Total:</b> $${total.toFixed(2)}`));
+  doc.moveDown();
+  doc.fontSize(14).text(`Total: $${total.toFixed(2)}`, { align: "right" });
 
-  return elementos;
+  doc.end();
+  return pdfPromise;
 }
 
-
-
-
+module.exports = generarPDF;
 
 
 //-------------------------------------------------------------------------------

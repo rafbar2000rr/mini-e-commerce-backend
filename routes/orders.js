@@ -78,11 +78,18 @@ router.post("/orders", verifyToken, async (req, res) => {
 
     // ✅ Guardar la orden en MongoDB
     const nuevaOrden = new Order({
-      productos: productosProcesados,
-      total: totalCalculado,
-      usuario: userId,
-      datosCliente,
-    });
+  usuario: req.userId,
+  productos: carrito.map((p) => ({
+    productoId: p._id,           // 🔹 Referencia al producto real
+    nombre: p.nombre,            // 🧠 Copia del nombre al momento de la compra
+    precioCompra: p.precio,      // 💰 Precio de ese momento
+    imagen: p.imagen,            // 🖼️ Imagen actual del producto
+    cantidad: p.cantidad,        // 🔹 Cantidad comprada
+  })),
+  total,
+  datosCliente,
+});
+
 
     await nuevaOrden.save();
 

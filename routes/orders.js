@@ -7,9 +7,7 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
 const isAdmin = require("../middleware/isAdmin");
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-import fetch from "node-fetch";
+
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
 // Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos
@@ -80,18 +78,11 @@ router.post("/orders", verifyToken, async (req, res) => {
 
     // ✅ Guardar la orden en MongoDB
     const nuevaOrden = new Order({
-  usuario: req.userId,
-  productos: carrito.map((p) => ({
-    productoId: p._id,           // 🔹 Referencia al producto real
-    nombre: p.nombre,            // 🧠 Copia del nombre al momento de la compra
-    precioCompra: p.precio,      // 💰 Precio de ese momento
-    imagen: p.imagen,            // 🖼️ Imagen actual del producto
-    cantidad: p.cantidad,        // 🔹 Cantidad comprada
-  })),
-  total,
-  datosCliente,
-});
-
+      productos: productosProcesados,
+      total: totalCalculado,
+      usuario: userId,
+      datosCliente,
+    });
 
     await nuevaOrden.save();
 
@@ -155,8 +146,6 @@ router.get("/orders/:id", verifyToken, async (req, res) => {
 //----------------------------------------------------------------------------------------------
 // ✅ Descargar orden en PDF. Este endpoint permite que un usuario autenticado descargue un PDF con el detalle de una orden que le pertenece. No guarda el archivo en el servidor, sino que lo genera en memoria y lo envía como descarga directa al navegador.
 // Descargar orden en PDF
-
-
 router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
@@ -166,96 +155,28 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
       return res.status(400).json({ error: "ID de orden inválido" });
     }
 
-    // 🔹 Buscar la orden con productos poblados
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
-      .populate("productos.productoId", "nombre imagen precio");
+      .select("-__v")
+      .populate("usuario")
+      .populate("productos.productoId", "nombre imagen precio"); // ✅ corregido
 
     if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
     }
 
-    // 📄 Crear PDF
-    const doc = new jsPDF();
-    doc.setFont("helvetica", "bold");
-    doc.text("Detalle de la Orden", 14, 20);
+    const pdfBuffer = await generarPDF(orden);
 
-    doc.setFont("helvetica", "normal");
-    doc.text(`ID: ${orden._id}`, 14, 30);
-    doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`, 14, 38);
-    doc.text(`Estado: ${orden.estado}`, 14, 46);
-    doc.text(
-      `Total: $${orden.total.toFixed(2)}`,
-      14,
-      54
-    );
-
-    // 📦 Datos del cliente
-    doc.setFont("helvetica", "bold");
-    doc.text("Datos del Cliente", 14, 70);
-    doc.setFont("helvetica", "normal");
-    const c = orden.datosCliente || {};
-    doc.text(`${c.nombre || ""}`, 14, 78);
-    doc.text(`${c.email || ""}`, 14, 86);
-    doc.text(`${c.direccion || ""}, ${c.ciudad || ""}`, 14, 94);
-    doc.text(`${c.codigoPostal || ""}`, 14, 102);
-
-    // 🛍️ Productos
-    doc.setFont("helvetica", "bold");
-    doc.text("Productos:", 14, 120);
-
-    const rows = await Promise.all(
-      orden.productos.map(async (p) => {
-        const producto = p.productoId;
-        const nombre = producto?.nombre || p.nombre || "Producto eliminado";
-        const precio = producto?.precio ?? p.precio ?? 0;
-        const cantidad = p.cantidad ?? 1;
-
-        // 🔹 Imagen
-        let imagenUrl = producto?.imagen || p.imagen;
-        if (imagenUrl && !imagenUrl.startsWith("http")) {
-          imagenUrl = `${process.env.BASE_URL}/uploads/${imagenUrl}`;
-        }
-
-        let imagenBase64 = "";
-        try {
-          if (imagenUrl) {
-            const response = await fetch(imagenUrl);
-            const buffer = await response.arrayBuffer();
-            const base64 = Buffer.from(buffer).toString("base64");
-            imagenBase64 = `data:image/jpeg;base64,${base64}`;
-          }
-        } catch {
-          imagenBase64 = "";
-        }
-
-        return [nombre, `$${precio.toFixed(2)}`, cantidad, imagenBase64];
-      })
-    );
-
-    // 📋 Tabla con imágenes
-    const tableData = rows.map(([nombre, precio, cantidad]) => [
-      nombre,
-      precio,
-      cantidad,
-    ]);
-
-    autoTable(doc, {
-      startY: 130,
-      head: [["Producto", "Precio", "Cantidad"]],
-      body: tableData,
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`,
     });
+    res.send(pdfBuffer);
 
-    // 📤 Enviar PDF
-    const pdfBuffer = doc.output("arraybuffer");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename=orden_${orden._id}.pdf`);
-    res.send(Buffer.from(pdfBuffer));
   } catch (error) {
     console.error("❌ Error al generar PDF:", error.message);
-    res.status(500).json({ error: "Error al generar PDF" });
+    res.status(500).json({ error: "Error al generar el PDF" });
   }
 });
-
 
 //--------------------------------------------------------------------------------------------------------------------
 // ✅ Obtener todas las órdenes del usuario autenticado
@@ -267,36 +188,21 @@ router.get("/my-orders", verifyToken, async (req, res) => {
     const userId = req.userId;
     console.log("👤 Buscando órdenes para usuario:", userId);
 
-    const ordenes = await Order.find({ usuario: userId })
-      .select("productos total estado status datosCliente fecha")
-      .populate("productos.productoId", "nombre precio imagen")
-      .sort({ fecha: -1 });
+    // 🔹 Traemos las órdenes y populamos los productos
+    const ordenes = await Order.find({ usuario: userId }) // Busca todas las órdenes en la colección Order que pertenezcan al usuario actual
+      .select("paypalOrderId status productos total estado datosCliente fecha") // solo campos necesarios
+      .populate("productos.productoId", "nombre precio imagen") // 👈 aquí se cargan los datos esenciales del producto
+      .sort({ fecha: -1 }); // Ordena las órdenes desde la más reciente a la más antigua
 
-    const ordenesFormateadas = ordenes.map((orden) => ({
-      _id: orden._id,
-      total: orden.total,
-      estado: orden.estado,
-      status: orden.status,
-      fecha: orden.fecha,
-      datosCliente: orden.datosCliente,
-      productos: orden.productos.map((p) => ({
-        nombre: p.productoId?.nombre || p.nombre || "Producto eliminado",
-        precio: p.productoId?.precio || p.precio || 0,
-        imagen:
-          p.productoId?.imagen || p.imagen || "/placeholder.png", // 👈 siempre devuelve algo
-        cantidad: p.cantidad,
-      })),
-    }));
+    console.log("📦 Órdenes enviadas al cliente:", ordenes.length);
 
-    console.log("📦 Órdenes enviadas al cliente:", ordenesFormateadas.length);
-    res.json(ordenesFormateadas);
+    // 🔹 Responder al cliente
+    res.json(ordenes);
   } catch (error) {
     console.error("❌ Error al obtener órdenes del usuario:", error.message);
     res.status(500).json({ error: "Error al obtener tus órdenes" });
   }
 });
-
-
 //-------------------------------------------------------------------
 // ✅ Obtener todas las órdenes de todos los usuarios (para admin)
 
@@ -305,31 +211,16 @@ router.get("/my-orders", verifyToken, async (req, res) => {
 router.get("/orders", verifyToken, isAdmin, async (req, res) => {
   try {
     const ordenes = await Order.find()
-      .populate("usuario", "nombre email rol")
-      .populate("productos.productoId", "nombre precio imagen")
-      .sort({ fecha: -1 });
+      .populate("usuario", "nombre email rol") // 👈 Trae nombre, email y rol del usuario
+      .populate("productos.productoId")// 👈 Trae detalles del producto
+      .sort({ fecha: -1 });// Ordena de más reciente a más antigua
 
-    // 🧩 Aplanamos los productos para que incluyan directamente nombre, precio y cantidad
-    const ordenesFormateadas = ordenes.map((orden) => ({
-      _id: orden._id,
-      usuario: orden.usuario,
-      total: orden.total,
-      estado: orden.estado,
-      fecha: orden.fecha,
-      productos: orden.productos.map((p) => ({
-        nombre: p.productoId?.nombre || "Producto eliminado",
-        precio: p.productoId?.precio || 0,
-        cantidad: p.cantidad,
-      })),
-    }));
-
-    res.json(ordenesFormateadas);
+    res.json(ordenes);
   } catch (error) {
     console.error("❌ Error al obtener todas las órdenes:", error.message);
     res.status(500).json({ error: "Error al obtener todas las órdenes" });
   }
 });
-
 
 //-----------------------------------------------------------------------
 // ✅ Actualizar estado de una orden (pendiente → enviado → entregado)

@@ -8,12 +8,14 @@ const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 // 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
 
+
 async function generarPDF(orden) {
   return new Promise(async (resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
 
+      // 🔹 Capturamos los chunks del PDF
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
@@ -59,16 +61,24 @@ async function generarPDF(orden) {
       );
       doc.moveDown(0.5);
 
-      const API_URL = process.env.API_URL || "http://localhost:5000"; // 🔹 URL de tu backend
-
+      // 🔹 Iteramos productos
       for (const p of orden.productos) {
+        const spaceNeeded = 100; // altura estimada de la "caja"
+        if (doc.y + spaceNeeded > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+        }
+
         const yInicio = doc.y;
 
-        // 🔹 Caja sombreada
+        //-----------------------------------------------
+        // 🔹 Caja sombreada por producto
+        //-----------------------------------------------
         doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
-        doc.fillOpacity(1);
+        doc.fillOpacity(1); // reset
 
-        // 🔹 Nombre y precio
+        //-----------------------------------------------
+        // 🔹 Datos del producto (nombre y precio)
+        //-----------------------------------------------
         const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
         const precio = p.productoId?.precio ?? p.precio ?? 0;
 
@@ -77,23 +87,32 @@ async function generarPDF(orden) {
         doc.font("Helvetica").fillColor("#555").fontSize(12)
           .text(`$${precio} x ${p.cantidad ?? 1}`, 60, yInicio + 18, { width: 350 });
 
-        // 🔹 Imagen: detecta si es URL relativa
-        let imgUrl = p.productoId?.imagen || p.imagen;
+        //-----------------------------------------------
+        // 🔹 Miniatura a la derecha (con fit y control de altura)
+        //-----------------------------------------------
+        const imgUrl = p.productoId?.imagen || p.imagen;
         if (imgUrl) {
-          if (!imgUrl.startsWith("http")) {
-            imgUrl = `${API_URL}/uploads/${imgUrl}`;
-          }
-
           try {
             const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
             const buffer = Buffer.from(response.data, "binary");
-            doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80], align: "right" });
+
+            const maxWidth = 80;
+            const maxHeight = 80;
+
+            // Ajustamos posición si la imagen no cabe
+            if (doc.y + maxHeight > doc.page.height - doc.page.margins.bottom) {
+              doc.addPage();
+            }
+
+            doc.image(buffer, 420, yInicio, { fit: [maxWidth, maxHeight], align: "right" });
           } catch (err) {
-            console.error("❌ Error cargando imagen remota:", imgUrl, err.message);
+            console.error("❌ Error cargando imagen remota:", err.message);
           }
         }
 
-        // 🔹 Separador
+        //-----------------------------------------------
+        // 🔹 Separador elegante
+        //-----------------------------------------------
         doc.moveDown(6);
         doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
         doc.moveDown(0.5);
@@ -114,7 +133,6 @@ async function generarPDF(orden) {
   });
 }
 
-module.exports = { generarPDF };
 
 
 //-------------------------------------------------------------------------------

@@ -196,22 +196,22 @@ router.get("/my-orders", verifyToken, async (req, res) => {
     console.log("👤 Buscando órdenes para usuario:", userId);
 
     const ordenes = await Order.find({ usuario: userId })
-      .select("productos total estado status datosCliente fecha")
+      .select("productos total estado status datosCliente fecha") // Incluye también el status de PayPal
       .populate("productos.productoId", "nombre precio imagen")
       .sort({ fecha: -1 });
 
+    // 🧩 Aplanamos las órdenes con sus productos
     const ordenesFormateadas = ordenes.map((orden) => ({
       _id: orden._id,
       total: orden.total,
-      estado: orden.estado,
-      status: orden.status,
+      estado: orden.estado,  // Estado interno (pendiente, enviado, entregado)
+      status: orden.status,  // Estado PayPal (COMPLETED, PENDING, etc.)
       fecha: orden.fecha,
       datosCliente: orden.datosCliente,
       productos: orden.productos.map((p) => ({
         nombre: p.productoId?.nombre || p.nombre || "Producto eliminado",
         precio: p.productoId?.precio || p.precio || 0,
-        imagen:
-          p.productoId?.imagen || p.imagen || "/placeholder.png", // 👈 siempre devuelve algo
+        imagen: p.productoId?.imagen || p.imagen || null,
         cantidad: p.cantidad,
       })),
     }));
@@ -223,7 +223,6 @@ router.get("/my-orders", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Error al obtener tus órdenes" });
   }
 });
-
 
 //-------------------------------------------------------------------
 // ✅ Obtener todas las órdenes de todos los usuarios (para admin)

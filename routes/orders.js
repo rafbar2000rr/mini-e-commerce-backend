@@ -194,19 +194,13 @@ router.get("/my-orders", verifyToken, async (req, res) => {
       .sort({ fecha: -1 });
 
     // 🧩 Aplanamos los productos para devolver datos listos para mostrar
-    const ordenesFormateadas = ordenes.map((orden) => ({
-      _id: orden._id,
-      total: orden.total,
-      estado: orden.estado,
-      fecha: orden.fecha,
-      datosCliente: orden.datosCliente,
-      productos: orden.productos.map((p) => ({
-        nombre: p.productoId?.nombre || "Producto eliminado",
-        precio: p.productoId?.precio || 0,
-        imagen: p.productoId?.imagen || null,
-        cantidad: p.cantidad,
-      })),
-    }));
+    productos: orden.productos.map((p) => ({
+  nombre: p.productoId?.nombre || p.nombre || "Producto eliminado",
+  precio: p.productoId?.precio || p.precioCompra || 0,
+  imagen: p.productoId?.imagen || p.imagen || null,
+  cantidad: p.cantidad,
+})),
+
 
     console.log("📦 Órdenes enviadas al cliente:", ordenesFormateadas.length);
     res.json(ordenesFormateadas);

@@ -2,10 +2,10 @@ const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 const axios = require("axios");
 
-const API_URL = process.env.VITE_API_URL || "http://localhost:5000"; // 🔹 URL base del backend
+const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 
 //-------------------------------------------------------------------------------
-// 📌 Genera un PDF estilo catálogo profesional con cajas sombreadas
+// 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
 async function generarPDF(orden) {
   return new Promise(async (resolve, reject) => {
@@ -58,45 +58,44 @@ async function generarPDF(orden) {
       );
       doc.moveDown(0.5);
 
-      // 🔹 Iteramos productos
       for (const p of orden.productos) {
         const yInicio = doc.y;
 
         //-----------------------------------------------
-        // 🔹 Caja sombreada por producto
+        // 🔹 Caja sombreada
         //-----------------------------------------------
         doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
         doc.fillOpacity(1);
 
         //-----------------------------------------------
-        // 🔹 Datos del producto (nombre y precio)
-        //-----------------------------------------------
-        const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
-        const precio = p.productoId?.precio ?? p.precio ?? 0;
-
-        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
-          .text(nombre, 60, yInicio, { width: 350 });
-        doc.font("Helvetica").fillColor("#555").fontSize(12)
-          .text(`$${precio} x ${p.cantidad ?? 1}`, 60, yInicio + 18, { width: 350 });
-
-        //-----------------------------------------------
-        // 🔹 Miniatura a la derecha
+        // 🔹 Imagen a la izquierda
         //-----------------------------------------------
         let imgUrl = p.productoId?.imagen || p.imagen;
         if (imgUrl && !imgUrl.startsWith("http")) {
-          imgUrl = `${API_URL}/uploads/${imgUrl}`; // URL absoluta
+          imgUrl = `${API_URL}/uploads/${imgUrl}`;
         }
         if (!imgUrl) {
-          imgUrl = "https://via.placeholder.com/80"; // placeholder
+          imgUrl = "https://via.placeholder.com/80";
         }
 
         try {
           const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
           const buffer = Buffer.from(response.data, "binary");
-          doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80], align: "right" });
+          doc.image(buffer, 50, yInicio, { width: 80, height: 80, fit: [80, 80] });
         } catch (err) {
-          console.error("❌ Error cargando imagen remota:", err.message);
+          console.error("❌ Error cargando imagen:", err.message);
         }
+
+        //-----------------------------------------------
+        // 🔹 Datos a la derecha de la imagen
+        //-----------------------------------------------
+        const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
+        const precio = p.productoId?.precio ?? p.precio ?? 0;
+
+        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
+          .text(nombre, 140, yInicio, { width: 350 });
+        doc.font("Helvetica").fillColor("#555").fontSize(12)
+          .text(`$${precio} x ${p.cantidad ?? 1}`, 140, yInicio + 20);
 
         //-----------------------------------------------
         // 🔹 Separador elegante

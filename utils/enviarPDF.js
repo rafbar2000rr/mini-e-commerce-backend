@@ -1,23 +1,25 @@
 const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 const axios = require("axios");
-
 const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
+const { Buffer } = require("buffer");
+const {
+  Image,
+  Paragraph,
+  Table,
+  TableStyle,
+  Spacer,
+} = require("reportlab").platypus;
+const { colors } = require("reportlab").lib;
 
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
 
-
-
-import { Buffer } from "buffer";
-import { Image, Paragraph, Table, TableStyle, Spacer } from "reportlab.platypus";
-import { colors } from "reportlab.lib";
-
-export async function generarPDF(orden) {
+async function generarPDF(orden) {
   const { usuario, productos, total } = orden;
 
-  // 🧠 Función auxiliar para cargar imágenes de forma segura
+  // 🧠 Función para cargar imágenes de forma segura
   async function obtenerImagenSegura(url) {
     try {
       const response = await axios.get(url, { responseType: "arraybuffer" });
@@ -56,7 +58,7 @@ export async function generarPDF(orden) {
       producto.nombre,
       `$${producto.precio.toFixed(2)}`,
       item.cantidad.toString(),
-      `$${subtotal.toFixed(2)}`
+      `$${subtotal.toFixed(2)}`,
     ]);
   }
 
@@ -78,6 +80,8 @@ export async function generarPDF(orden) {
 
   return elementos;
 }
+
+
 
 
 

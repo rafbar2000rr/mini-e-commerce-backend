@@ -7,6 +7,7 @@ const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
+
 async function generarPDF(orden) {
   return new Promise(async (resolve, reject) => {
     try {
@@ -58,48 +59,41 @@ async function generarPDF(orden) {
       );
       doc.moveDown(0.5);
 
+      const API_URL = process.env.API_URL || "http://localhost:5000"; // 🔹 URL de tu backend
+
       for (const p of orden.productos) {
         const yInicio = doc.y;
 
-        //-----------------------------------------------
         // 🔹 Caja sombreada
-        //-----------------------------------------------
         doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
         doc.fillOpacity(1);
 
-        //-----------------------------------------------
-        // 🔹 Imagen a la izquierda
-        //-----------------------------------------------
-        let imgUrl = p.productoId?.imagen || p.imagen;
-        if (imgUrl && !imgUrl.startsWith("http")) {
-          imgUrl = `${API_URL}/uploads/${imgUrl}`;
-        }
-        if (!imgUrl) {
-          imgUrl = "https://via.placeholder.com/80";
-        }
-
-        try {
-          const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
-          const buffer = Buffer.from(response.data, "binary");
-          doc.image(buffer, 50, yInicio, { width: 80, height: 80, fit: [80, 80] });
-        } catch (err) {
-          console.error("❌ Error cargando imagen:", err.message);
-        }
-
-        //-----------------------------------------------
-        // 🔹 Datos a la derecha de la imagen
-        //-----------------------------------------------
+        // 🔹 Nombre y precio
         const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
         const precio = p.productoId?.precio ?? p.precio ?? 0;
 
         doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
-          .text(nombre, 140, yInicio, { width: 350 });
+          .text(nombre, 60, yInicio, { width: 350 });
         doc.font("Helvetica").fillColor("#555").fontSize(12)
-          .text(`$${precio} x ${p.cantidad ?? 1}`, 140, yInicio + 20);
+          .text(`$${precio} x ${p.cantidad ?? 1}`, 60, yInicio + 18, { width: 350 });
 
-        //-----------------------------------------------
-        // 🔹 Separador elegante
-        //-----------------------------------------------
+        // 🔹 Imagen: detecta si es URL relativa
+        let imgUrl = p.productoId?.imagen || p.imagen;
+        if (imgUrl) {
+          if (!imgUrl.startsWith("http")) {
+            imgUrl = `${API_URL}/uploads/${imgUrl}`;
+          }
+
+          try {
+            const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
+            const buffer = Buffer.from(response.data, "binary");
+            doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80], align: "right" });
+          } catch (err) {
+            console.error("❌ Error cargando imagen remota:", imgUrl, err.message);
+          }
+        }
+
+        // 🔹 Separador
         doc.moveDown(6);
         doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
         doc.moveDown(0.5);
@@ -119,6 +113,9 @@ async function generarPDF(orden) {
     }
   });
 }
+
+module.exports = { generarPDF };
+
 
 //-------------------------------------------------------------------------------
 // 📌 Enviar PDF por correo

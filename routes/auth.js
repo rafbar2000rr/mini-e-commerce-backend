@@ -28,7 +28,7 @@ router.post("/register", async (req, res) => {
       nombre,
       email,
       password,
-      rol: rol || "cliente", // 💜 agrega esta línea
+      rol: "user", // 💜 agrega esta línea
     });
     await newUser.save();
 

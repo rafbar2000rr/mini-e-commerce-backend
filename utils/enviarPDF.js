@@ -74,7 +74,6 @@ async function generarPDF(orden) {
   return pdfPromise;
 }
 
-module.exports = generarPDF;
 
 
 //-------------------------------------------------------------------------------

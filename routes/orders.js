@@ -7,7 +7,9 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
 const isAdmin = require("../middleware/isAdmin");
-
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import fetch from "node-fetch";
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
 // Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos
@@ -153,9 +155,7 @@ router.get("/orders/:id", verifyToken, async (req, res) => {
 //----------------------------------------------------------------------------------------------
 // ✅ Descargar orden en PDF. Este endpoint permite que un usuario autenticado descargue un PDF con el detalle de una orden que le pertenece. No guarda el archivo en el servidor, sino que lo genera en memoria y lo envía como descarga directa al navegador.
 // Descargar orden en PDF
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-import fetch from "node-fetch";
+
 
 router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
   try {
@@ -213,7 +213,48 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
         // 🔹 Imagen
         let imagenUrl = producto?.imagen || p.imagen;
         if (imagenUrl && !imagenUrl.startsWith("http")) {
-          imagenUrl = `${process.env.BASE_URL}/upl_
+          imagenUrl = `${process.env.BASE_URL}/uploads/${imagenUrl}`;
+        }
+
+        let imagenBase64 = "";
+        try {
+          if (imagenUrl) {
+            const response = await fetch(imagenUrl);
+            const buffer = await response.arrayBuffer();
+            const base64 = Buffer.from(buffer).toString("base64");
+            imagenBase64 = `data:image/jpeg;base64,${base64}`;
+          }
+        } catch {
+          imagenBase64 = "";
+        }
+
+        return [nombre, `$${precio.toFixed(2)}`, cantidad, imagenBase64];
+      })
+    );
+
+    // 📋 Tabla con imágenes
+    const tableData = rows.map(([nombre, precio, cantidad]) => [
+      nombre,
+      precio,
+      cantidad,
+    ]);
+
+    autoTable(doc, {
+      startY: 130,
+      head: [["Producto", "Precio", "Cantidad"]],
+      body: tableData,
+    });
+
+    // 📤 Enviar PDF
+    const pdfBuffer = doc.output("arraybuffer");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=orden_${orden._id}.pdf`);
+    res.send(Buffer.from(pdfBuffer));
+  } catch (error) {
+    console.error("❌ Error al generar PDF:", error.message);
+    res.status(500).json({ error: "Error al generar PDF" });
+  }
+});
 
 
 //--------------------------------------------------------------------------------------------------------------------

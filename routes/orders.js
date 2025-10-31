@@ -158,14 +158,9 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
     const userId = req.userId;
     const orderId = req.params.id;
 
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({ error: "ID de orden inválido" });
-    }
-
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
-      .select("-__v")
       .populate("usuario")
-      .populate("productos.productoId", "nombre imagen precio"); // ✅ corregido
+      .populate("productos.productoId", "nombre imagen precio");
 
     if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
@@ -177,8 +172,8 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`,
     });
-    res.send(pdfBuffer);
 
+    res.send(pdfBuffer);
   } catch (error) {
     console.error("❌ Error al generar PDF:", error.message);
     res.status(500).json({ error: "Error al generar el PDF" });

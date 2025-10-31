@@ -70,8 +70,6 @@ async function generarPDF(orden) {
   return pdfPromise;
 }
 
-module.exports = generarPDF;
-
 
 //-------------------------------------------------------------------------------
 // 📌 Enviar PDF por correo

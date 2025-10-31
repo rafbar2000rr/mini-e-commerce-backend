@@ -7,9 +7,7 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
 const isAdmin = require("../middleware/isAdmin");
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-import fetch from "node-fetch";
+
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
 // Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos
@@ -155,8 +153,6 @@ router.get("/orders/:id", verifyToken, async (req, res) => {
 //----------------------------------------------------------------------------------------------
 // ✅ Descargar orden en PDF. Este endpoint permite que un usuario autenticado descargue un PDF con el detalle de una orden que le pertenece. No guarda el archivo en el servidor, sino que lo genera en memoria y lo envía como descarga directa al navegador.
 // Descargar orden en PDF
-
-
 router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
@@ -166,96 +162,28 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
       return res.status(400).json({ error: "ID de orden inválido" });
     }
 
-    // 🔹 Buscar la orden con productos poblados
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
-      .populate("productos.productoId", "nombre imagen precio");
+      .select("-__v")
+      .populate("usuario")
+      .populate("productos.productoId", "nombre imagen precio"); // ✅ corregido
 
     if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
     }
 
-    // 📄 Crear PDF
-    const doc = new jsPDF();
-    doc.setFont("helvetica", "bold");
-    doc.text("Detalle de la Orden", 14, 20);
+    const pdfBuffer = await generarPDF(orden);
 
-    doc.setFont("helvetica", "normal");
-    doc.text(`ID: ${orden._id}`, 14, 30);
-    doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`, 14, 38);
-    doc.text(`Estado: ${orden.estado}`, 14, 46);
-    doc.text(
-      `Total: $${orden.total.toFixed(2)}`,
-      14,
-      54
-    );
-
-    // 📦 Datos del cliente
-    doc.setFont("helvetica", "bold");
-    doc.text("Datos del Cliente", 14, 70);
-    doc.setFont("helvetica", "normal");
-    const c = orden.datosCliente || {};
-    doc.text(`${c.nombre || ""}`, 14, 78);
-    doc.text(`${c.email || ""}`, 14, 86);
-    doc.text(`${c.direccion || ""}, ${c.ciudad || ""}`, 14, 94);
-    doc.text(`${c.codigoPostal || ""}`, 14, 102);
-
-    // 🛍️ Productos
-    doc.setFont("helvetica", "bold");
-    doc.text("Productos:", 14, 120);
-
-    const rows = await Promise.all(
-      orden.productos.map(async (p) => {
-        const producto = p.productoId;
-        const nombre = producto?.nombre || p.nombre || "Producto eliminado";
-        const precio = producto?.precio ?? p.precio ?? 0;
-        const cantidad = p.cantidad ?? 1;
-
-        // 🔹 Imagen
-        let imagenUrl = producto?.imagen || p.imagen;
-        if (imagenUrl && !imagenUrl.startsWith("http")) {
-          imagenUrl = `${process.env.BASE_URL}/uploads/${imagenUrl}`;
-        }
-
-        let imagenBase64 = "";
-        try {
-          if (imagenUrl) {
-            const response = await fetch(imagenUrl);
-            const buffer = await response.arrayBuffer();
-            const base64 = Buffer.from(buffer).toString("base64");
-            imagenBase64 = `data:image/jpeg;base64,${base64}`;
-          }
-        } catch {
-          imagenBase64 = "";
-        }
-
-        return [nombre, `$${precio.toFixed(2)}`, cantidad, imagenBase64];
-      })
-    );
-
-    // 📋 Tabla con imágenes
-    const tableData = rows.map(([nombre, precio, cantidad]) => [
-      nombre,
-      precio,
-      cantidad,
-    ]);
-
-    autoTable(doc, {
-      startY: 130,
-      head: [["Producto", "Precio", "Cantidad"]],
-      body: tableData,
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`,
     });
+    res.send(pdfBuffer);
 
-    // 📤 Enviar PDF
-    const pdfBuffer = doc.output("arraybuffer");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename=orden_${orden._id}.pdf`);
-    res.send(Buffer.from(pdfBuffer));
   } catch (error) {
     console.error("❌ Error al generar PDF:", error.message);
-    res.status(500).json({ error: "Error al generar PDF" });
+    res.status(500).json({ error: "Error al generar el PDF" });
   }
 });
-
 
 //--------------------------------------------------------------------------------------------------------------------
 // ✅ Obtener todas las órdenes del usuario autenticado

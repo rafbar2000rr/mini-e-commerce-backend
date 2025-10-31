@@ -5,15 +5,19 @@ const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 const { Buffer } = require("buffer");
 
 
+
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
 
-// 🧠 Función para generar el PDF de la orden
+const PDFDocument = require("pdfkit");
+const axios = require("axios");
 
+// 🧠 Función para generar el PDF de la orden
 async function generarPDF(orden) {
   const { usuario, productos, total } = orden;
 
+  // 🪄 Creamos el PDF en memoria
   const doc = new PDFDocument({ margin: 40 });
   const chunks = [];
   doc.on("data", (chunk) => chunks.push(chunk));
@@ -21,84 +25,56 @@ async function generarPDF(orden) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
   });
 
-  //-----------------------------------------------------------
-  // ✨ Encabezado
-  //-----------------------------------------------------------
-  doc.fontSize(22).fillColor("#D63384").text("Detalle de la Orden", { align: "center" });
+  // 🧾 Encabezado
+  doc.fontSize(18).text("Order Summary", { align: "center" });
   doc.moveDown();
-  doc.fillColor("black").fontSize(12);
-  doc.text(`ID de Orden: ${orden._id}`);
-  doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
-  doc.moveDown(0.5);
-  doc.text(`Cliente: ${usuario?.nombre || "No disponible"}`);
-  doc.text(`Email: ${usuario?.email || "No disponible"}`);
-  doc.moveDown(1);
+  doc.fontSize(12).text(`Order ID: ${orden._id}`);
+  doc.text(`Customer: ${usuario.nombre}`);
+  doc.text(`Email: ${usuario.email}`);
+  doc.moveDown();
 
-  //-----------------------------------------------------------
-  // 🛍️ Lista de productos
-  //-----------------------------------------------------------
-  doc.fontSize(16).fillColor("#333").text("Productos Comprados", { underline: true });
+  // 🛍️ Título productos
+  doc.fontSize(14).text("Purchased Products:");
   doc.moveDown(0.5);
 
+  // 📦 Lista de productos
   for (const item of productos) {
     const producto = item.productoId;
-    const subtotal = (producto?.precio ?? 0) * (item.cantidad ?? 1);
+    const subtotal = producto.precio * item.cantidad;
 
-    // 📦 Caja con borde suave
-    const boxTop = doc.y;
-    doc.roundedRect(40, boxTop, 520, 90, 8).fillOpacity(0.05).fill("#000000");
-    doc.fillOpacity(1); // reset fill
-    doc.strokeColor("#ccc").lineWidth(0.5).stroke();
-
-    // 📸 Imagen del producto
-    const imgX = 50;
-    const imgY = boxTop + 10;
-    try {
-      if (producto?.imagen) {
+    // 🔹 Cargar imagen si existe
+    if (producto.imagen) {
+      try {
         const response = await axios.get(producto.imagen, { responseType: "arraybuffer" });
         const imgBuffer = Buffer.from(response.data);
-        doc.image(imgBuffer, imgX, imgY, { width: 70, height: 70, fit: [70, 70] });
-      } else {
-        doc.fontSize(10).fillColor("#888").text("[sin imagen]", imgX, imgY + 25);
+        doc.image(imgBuffer, { width: 60, height: 60, align: "left" });
+      } catch (error) {
+        doc.text("[Image not available]");
       }
-    } catch (err) {
-      doc.fontSize(10).fillColor("#888").text("[imagen no disponible]", imgX, imgY + 25);
+    } else {
+      doc.text("[No image]");
     }
 
-    // 📝 Texto a la derecha
-    const textX = 140;
-    const textY = boxTop + 15;
-    doc.font("Helvetica-Bold").fillColor("#111").fontSize(12)
-      .text(producto?.nombre ?? "Producto sin nombre", textX, textY, { width: 350 });
-    doc.font("Helvetica").fillColor("#444").fontSize(11)
-      .text(`Precio: $${(producto?.precio ?? 0).toFixed(2)}`, textX, textY + 18)
-      .text(`Cantidad: ${item.cantidad ?? 1}`, textX, textY + 33)
-      .text(`Subtotal: $${subtotal.toFixed(2)}`, textX, textY + 48);
+    // 🔹 Texto al lado
+    doc.fontSize(12).text(`Product: ${producto.nombre}`);
+    doc.text(`Price: $${producto.precio.toFixed(2)}`);
+    doc.text(`Quantity: ${item.cantidad}`);
+    doc.text(`Subtotal: $${subtotal.toFixed(2)}`);
+    doc.moveDown(1);
 
-    // 🔹 Espacio entre productos
-    doc.moveDown(7);
-
-    // ⛔ Evitar que una caja quede cortada
+    // 🔹 Evita que se corte al final de la página
     if (doc.y > 700) doc.addPage();
   }
 
-  //-----------------------------------------------------------
-  // 💰 Total final
-  //-----------------------------------------------------------
-  doc.moveDown(1);
-  doc.font("Helvetica-Bold").fontSize(14).fillColor("#000")
-    .text(`Total: $${(total ?? 0).toFixed(2)}`, { align: "right" });
-
-  //-----------------------------------------------------------
-  // ❤️ Pie de página
-  //-----------------------------------------------------------
-  doc.moveDown(2);
-  doc.fontSize(10).fillColor("#666")
-    .text("Gracias por tu compra 💖 — Mini E-commerce", { align: "center" });
+  // 💰 Total
+  doc.moveDown();
+  doc.fontSize(14).text(`Total: $${total.toFixed(2)}`, { align: "right" });
 
   doc.end();
   return pdfPromise;
 }
+
+module.exports = generarPDF;
 
 
 //-------------------------------------------------------------------------------

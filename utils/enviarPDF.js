@@ -10,8 +10,6 @@ const { Buffer } = require("buffer");
 // 📌 Genera un PDF tipo catálogo profesional
 //-------------------------------------------------------------------------------
 
-const PDFDocument = require("pdfkit");
-const axios = require("axios");
 
 // 🧠 Función para generar el PDF de la orden
 async function generarPDF(orden) {

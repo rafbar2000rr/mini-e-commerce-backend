@@ -153,6 +153,10 @@ router.get("/orders/:id", verifyToken, async (req, res) => {
 //----------------------------------------------------------------------------------------------
 // ✅ Descargar orden en PDF. Este endpoint permite que un usuario autenticado descargue un PDF con el detalle de una orden que le pertenece. No guarda el archivo en el servidor, sino que lo genera en memoria y lo envía como descarga directa al navegador.
 // Descargar orden en PDF
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import fetch from "node-fetch";
+
 router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
@@ -162,28 +166,55 @@ router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
       return res.status(400).json({ error: "ID de orden inválido" });
     }
 
+    // 🔹 Buscar la orden con productos poblados
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
-      .select("-__v")
-      .populate("usuario")
-      .populate("productos.productoId", "nombre imagen precio"); // ✅ corregido
+      .populate("productos.productoId", "nombre imagen precio");
 
     if (!orden) {
       return res.status(404).json({ error: "Orden no encontrada" });
     }
 
-    const pdfBuffer = await generarPDF(orden);
+    // 📄 Crear PDF
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "bold");
+    doc.text("Detalle de la Orden", 14, 20);
 
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`,
-    });
-    res.send(pdfBuffer);
+    doc.setFont("helvetica", "normal");
+    doc.text(`ID: ${orden._id}`, 14, 30);
+    doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`, 14, 38);
+    doc.text(`Estado: ${orden.estado}`, 14, 46);
+    doc.text(
+      `Total: $${orden.total.toFixed(2)}`,
+      14,
+      54
+    );
 
-  } catch (error) {
-    console.error("❌ Error al generar PDF:", error.message);
-    res.status(500).json({ error: "Error al generar el PDF" });
-  }
-});
+    // 📦 Datos del cliente
+    doc.setFont("helvetica", "bold");
+    doc.text("Datos del Cliente", 14, 70);
+    doc.setFont("helvetica", "normal");
+    const c = orden.datosCliente || {};
+    doc.text(`${c.nombre || ""}`, 14, 78);
+    doc.text(`${c.email || ""}`, 14, 86);
+    doc.text(`${c.direccion || ""}, ${c.ciudad || ""}`, 14, 94);
+    doc.text(`${c.codigoPostal || ""}`, 14, 102);
+
+    // 🛍️ Productos
+    doc.setFont("helvetica", "bold");
+    doc.text("Productos:", 14, 120);
+
+    const rows = await Promise.all(
+      orden.productos.map(async (p) => {
+        const producto = p.productoId;
+        const nombre = producto?.nombre || p.nombre || "Producto eliminado";
+        const precio = producto?.precio ?? p.precio ?? 0;
+        const cantidad = p.cantidad ?? 1;
+
+        // 🔹 Imagen
+        let imagenUrl = producto?.imagen || p.imagen;
+        if (imagenUrl && !imagenUrl.startsWith("http")) {
+          imagenUrl = `${process.env.BASE_URL}/upl_
+
 
 //--------------------------------------------------------------------------------------------------------------------
 // ✅ Obtener todas las órdenes del usuario autenticado

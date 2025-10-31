@@ -15,34 +15,30 @@ async function generarPDF(orden) {
       const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
 
-      // 🔹 Capturamos los chunks del PDF
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
-      //-----------------------------------------------
-      // 🎀 Encabezado
-      //-----------------------------------------------
+      // ------------------------------------------
+      // 💖 ENCABEZADO
+      // ------------------------------------------
       doc.fillColor("#D63384")
         .fontSize(22)
         .text("Detalle de la Orden", { align: "center", underline: true });
       doc.moveDown(1);
 
-      //-----------------------------------------------
-      // ID, fecha y total
-      //-----------------------------------------------
+      // ------------------------------------------
+      // 📄 INFORMACIÓN GENERAL
+      // ------------------------------------------
       doc.fillColor("black").fontSize(12);
       doc.text(`ID de la Orden: ${orden._id}`);
       doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
       doc.font("Helvetica-Bold").text(`Total: $${orden.total.toFixed(2)}`);
       doc.moveDown(1);
 
-      //-----------------------------------------------
-      // 📦 Datos del cliente
-      //-----------------------------------------------
-      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
-        "Datos del Cliente:",
-        { underline: true }
-      );
+      // ------------------------------------------
+      // 👤 DATOS DEL CLIENTE
+      // ------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Datos del Cliente:", { underline: true });
       doc.moveDown(0.5);
       doc.font("Helvetica").fillColor("black");
       doc.text(`Nombre: ${orden.datosCliente?.nombre || "No disponible"}`);
@@ -50,81 +46,67 @@ async function generarPDF(orden) {
       doc.text(`Dirección: ${orden.datosCliente?.direccion || "No disponible"}`);
       doc.text(`Ciudad: ${orden.datosCliente?.ciudad || "No disponible"}`);
       doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal || "No disponible"}`);
-      doc.moveDown(1);
+      doc.moveDown(1.2);
 
-      //-----------------------------------------------
-      // 📌 Productos de la orden
-      //-----------------------------------------------
-      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
-        "Productos:",
-        { underline: true }
-      );
-      doc.moveDown(0.5);
+      // ------------------------------------------
+      // 🛍️ LISTA DE PRODUCTOS
+      // ------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Productos:", { underline: true });
+      doc.moveDown(0.8);
 
-      // 🔹 Iteramos productos
       for (const p of orden.productos) {
-        const spaceNeeded = 100; // altura estimada de la "caja"
-        if (doc.y + spaceNeeded > doc.page.height - doc.page.margins.bottom) {
+        const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
+        const precio = p.productoId?.precio ?? p.precio ?? 0;
+        const cantidad = p.cantidad ?? 1;
+        const imgUrl = p.productoId?.imagen || p.imagen;
+
+        const boxHeight = 95; // altura total de la caja de producto
+
+        // 💡 Si no hay espacio suficiente, nueva página
+        if (doc.y + boxHeight > doc.page.height - doc.page.margins.bottom - 20) {
           doc.addPage();
         }
 
-        const yInicio = doc.y;
+        // 🔲 Caja de fondo
+        const boxY = doc.y;
+        doc.save();
+        doc.rect(45, boxY - 5, 510, boxHeight).fillOpacity(0.05).fill("#000").restore();
 
-        //-----------------------------------------------
-        // 🔹 Caja sombreada por producto
-        //-----------------------------------------------
-        doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
-        doc.fillOpacity(1); // reset
+        // 📄 Nombre y precio
+        doc.font("Helvetica-Bold").fillColor("#111").fontSize(12)
+          .text(nombre, 60, boxY + 5, { width: 340 });
+        doc.font("Helvetica").fillColor("#555").fontSize(11)
+          .text(`$${precio} x ${cantidad}`, 60, boxY + 25, { width: 340 });
 
-        //-----------------------------------------------
-        // 🔹 Datos del producto (nombre y precio)
-        //-----------------------------------------------
-        const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
-        const precio = p.productoId?.precio ?? p.precio ?? 0;
-
-        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
-          .text(nombre, 60, yInicio, { width: 350 });
-        doc.font("Helvetica").fillColor("#555").fontSize(12)
-          .text(`$${precio} x ${p.cantidad ?? 1}`, 60, yInicio + 18, { width: 350 });
-
-        //-----------------------------------------------
-        // 🔹 Miniatura a la derecha (con fit y control de altura)
-        //-----------------------------------------------
-        const imgUrl = p.productoId?.imagen || p.imagen;
+        // 🖼️ Imagen (si existe)
         if (imgUrl) {
           try {
             const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
             const buffer = Buffer.from(response.data, "binary");
 
-            const maxWidth = 80;
-            const maxHeight = 80;
-
-            // Ajustamos posición si la imagen no cabe
-            if (doc.y + maxHeight > doc.page.height - doc.page.margins.bottom) {
-              doc.addPage();
-            }
-
-            doc.image(buffer, 420, yInicio, { fit: [maxWidth, maxHeight], align: "right" });
+            // Ajuste automático sin cortar imagen
+            doc.image(buffer, 420, boxY, { width: 80, height: 80, fit: [80, 80] });
           } catch (err) {
-            console.error("❌ Error cargando imagen remota:", err.message);
+            console.error("❌ Error al cargar imagen:", err.message);
           }
         }
 
-        //-----------------------------------------------
-        // 🔹 Separador elegante
-        //-----------------------------------------------
+        // ✨ Separador visual
         doc.moveDown(6);
         doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
         doc.moveDown(0.5);
       }
 
-      //-----------------------------------------------
-      // Pie de página
-      //-----------------------------------------------
-      doc.moveDown(1);
+      // ------------------------------------------
+      // 🌸 PIE DE PÁGINA
+      // ------------------------------------------
+      if (doc.y + 60 > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+      }
+      doc.moveDown(2);
       doc.fontSize(10)
         .fillColor("#555")
-        .text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
+        .text("Gracias por tu compra. 💕 ¡Esperamos verte pronto!", { align: "center" });
 
       doc.end();
     } catch (err) {
@@ -132,6 +114,7 @@ async function generarPDF(orden) {
     }
   });
 }
+
 
 
 

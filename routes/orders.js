@@ -188,21 +188,34 @@ router.get("/my-orders", verifyToken, async (req, res) => {
     const userId = req.userId;
     console.log("👤 Buscando órdenes para usuario:", userId);
 
-    // 🔹 Traemos las órdenes y populamos los productos
-    const ordenes = await Order.find({ usuario: userId }) // Busca todas las órdenes en la colección Order que pertenezcan al usuario actual
-      .select("paypalOrderId status productos total estado datosCliente fecha") // solo campos necesarios
-      .populate("productos.productoId", "nombre precio imagen") // 👈 aquí se cargan los datos esenciales del producto
-      .sort({ fecha: -1 }); // Ordena las órdenes desde la más reciente a la más antigua
+    const ordenes = await Order.find({ usuario: userId })
+      .select("productos total estado datosCliente fecha")
+      .populate("productos.productoId", "nombre precio imagen")
+      .sort({ fecha: -1 });
 
-    console.log("📦 Órdenes enviadas al cliente:", ordenes.length);
+    // 🧩 Aplanamos los productos para devolver datos listos para mostrar
+    const ordenesFormateadas = ordenes.map((orden) => ({
+      _id: orden._id,
+      total: orden.total,
+      estado: orden.estado,
+      fecha: orden.fecha,
+      datosCliente: orden.datosCliente,
+      productos: orden.productos.map((p) => ({
+        nombre: p.productoId?.nombre || "Producto eliminado",
+        precio: p.productoId?.precio || 0,
+        imagen: p.productoId?.imagen || null,
+        cantidad: p.cantidad,
+      })),
+    }));
 
-    // 🔹 Responder al cliente
-    res.json(ordenes);
+    console.log("📦 Órdenes enviadas al cliente:", ordenesFormateadas.length);
+    res.json(ordenesFormateadas);
   } catch (error) {
     console.error("❌ Error al obtener órdenes del usuario:", error.message);
     res.status(500).json({ error: "Error al obtener tus órdenes" });
   }
 });
+
 //-------------------------------------------------------------------
 // ✅ Obtener todas las órdenes de todos los usuarios (para admin)
 

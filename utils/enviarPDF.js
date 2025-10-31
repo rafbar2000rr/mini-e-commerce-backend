@@ -105,7 +105,7 @@ async function generarPDF(orden) {
       doc.moveDown(2);
       doc.fontSize(10)
         .fillColor("#555")
-        .text("Gracias por tu compra. 💕 ¡Esperamos verte pronto!", { align: "center" });
+        .text("Gracias por tu compra.¡Esperamos verte pronto!", { align: "center" });
 
       doc.end();
     } catch (err) {

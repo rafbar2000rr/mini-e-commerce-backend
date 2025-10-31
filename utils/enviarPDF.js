@@ -2,6 +2,8 @@ const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 const axios = require("axios");
 
+const API_URL = process.env.VITE_API_URL || "http://localhost:5000"; // 🔹 URL base del backend
+
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF estilo catálogo profesional con cajas sombreadas
 //-------------------------------------------------------------------------------
@@ -11,7 +13,6 @@ async function generarPDF(orden) {
       const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
 
-      // 🔹 Capturamos los chunks del PDF
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
@@ -65,7 +66,7 @@ async function generarPDF(orden) {
         // 🔹 Caja sombreada por producto
         //-----------------------------------------------
         doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
-        doc.fillOpacity(1); // reset
+        doc.fillOpacity(1);
 
         //-----------------------------------------------
         // 🔹 Datos del producto (nombre y precio)
@@ -81,15 +82,20 @@ async function generarPDF(orden) {
         //-----------------------------------------------
         // 🔹 Miniatura a la derecha
         //-----------------------------------------------
-        const imgUrl = p.productoId?.imagen || p.imagen;
-        if (imgUrl) {
-          try {
-            const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
-            const buffer = Buffer.from(response.data, "binary");
-            doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80], align: "right" });
-          } catch (err) {
-            console.error("❌ Error cargando imagen remota:", err.message);
-          }
+        let imgUrl = p.productoId?.imagen || p.imagen;
+        if (imgUrl && !imgUrl.startsWith("http")) {
+          imgUrl = `${API_URL}/uploads/${imgUrl}`; // URL absoluta
+        }
+        if (!imgUrl) {
+          imgUrl = "https://via.placeholder.com/80"; // placeholder
+        }
+
+        try {
+          const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
+          const buffer = Buffer.from(response.data, "binary");
+          doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80], align: "right" });
+        } catch (err) {
+          console.error("❌ Error cargando imagen remota:", err.message);
         }
 
         //-----------------------------------------------
@@ -122,9 +128,6 @@ async function enviarPDFporCorreo(orden) {
   try {
     const pdfBuffer = await generarPDF(orden);
 
-    //-----------------------------------------------
-    // 🔹 Configurar transporter de Gmail
-    //-----------------------------------------------
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -133,9 +136,6 @@ async function enviarPDFporCorreo(orden) {
       },
     });
 
-    //-----------------------------------------------
-    // 🔹 Enviar correo con PDF adjunto
-    //-----------------------------------------------
     await transporter.sendMail({
       from: '"Mini E-commerce" <rafbar2000rr@gmail.com>',
       to: orden.usuario?.email || "no-reply@example.com",
@@ -157,7 +157,4 @@ async function enviarPDFporCorreo(orden) {
   }
 }
 
-//-------------------------------------------------------------------------------
-// 🔹 Exportamos funciones
-//-------------------------------------------------------------------------------
 module.exports = { generarPDF, enviarPDFporCorreo };

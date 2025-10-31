@@ -9,7 +9,7 @@ const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 //-------------------------------------------------------------------------------
 
 
-import axios from "axios";
+
 import { Buffer } from "buffer";
 import { Image, Paragraph, Table, TableStyle, Spacer } from "reportlab.platypus";
 import { colors } from "reportlab.lib";

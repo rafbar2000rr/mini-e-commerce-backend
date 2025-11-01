@@ -13,35 +13,26 @@ async function generarPDF(orden) {
     try {
       const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
+
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
       const PAGE_HEIGHT = doc.page.height - doc.page.margins.bottom;
       const PRODUCT_BOX_HEIGHT = 100;
 
-      //-----------------------------------------------
-      // 🎀 Encabezado
-      //-----------------------------------------------
-      doc.fillColor("#D63384")
-        .fontSize(22)
-        .text("Detalle de la Orden", { align: "center", underline: true });
+      // Encabezado
+      doc.fillColor("#D63384").fontSize(22).text("Detalle de la Orden", { align: "center", underline: true });
       doc.moveDown(1);
 
-      //-----------------------------------------------
       // ID, fecha y total
-      //-----------------------------------------------
       doc.fillColor("black").fontSize(12);
       doc.text(`ID de la Orden: ${orden._id}`);
       doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
-      doc.font("Helvetica-Bold").text(`Total: $${orden.total.toFixed(2)}`);
+      doc.font("Helvetica-Bold").text(`Total: $${(orden.total ?? 0).toFixed(2)}`);
       doc.moveDown(1);
 
-      //-----------------------------------------------
       // Datos del cliente
-      //-----------------------------------------------
-      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
-        "Datos del Cliente:", { underline: true }
-      );
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Datos del Cliente:", { underline: true });
       doc.moveDown(0.5);
       doc.font("Helvetica").fillColor("black");
       doc.text(`Nombre: ${orden.datosCliente?.nombre || "No disponible"}`);
@@ -51,71 +42,44 @@ async function generarPDF(orden) {
       doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal || "No disponible"}`);
       doc.moveDown(1);
 
-      //-----------------------------------------------
-      // Productos de la orden
-      //-----------------------------------------------
-      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
-        "Productos:", { underline: true }
-      );
+      // Productos
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Productos:", { underline: true });
       doc.moveDown(0.5);
 
       for (const p of orden.productos) {
         if (doc.y + PRODUCT_BOX_HEIGHT > PAGE_HEIGHT) doc.addPage();
+
         const yInicio = doc.y;
 
-        //-----------------------------------------------
-        // Caja sombreada por producto
-        //-----------------------------------------------
         doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
         doc.fillOpacity(1);
 
-        //-----------------------------------------------
-        // Datos del producto
-        //-----------------------------------------------
         const nombre = p.nombre || "Producto sin nombre";
         const precioPagado = p.precioPagado ?? 0;
-        const precioActual = p.precioActual ?? 0;
-        const cantidad = p.cantidad || 1;
-        const subtotal = precioPagado * cantidad;
 
-        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
-          .text(nombre, 60, yInicio, { width: 350 });
-        doc.font("Helvetica").fillColor("#555").fontSize(12)
-          .text(`Precio congelado: $${precioPagado.toFixed(2)}`, 60, yInicio + 18);
-        doc.text(`Precio actual: $${precioActual.toFixed(2)}`, 60, yInicio + 34);
-        doc.text(`Cantidad: ${cantidad}`, 60, yInicio + 50);
-        doc.font("Helvetica-Bold").text(`Subtotal: $${subtotal.toFixed(2)}`, 60, yInicio + 66);
+        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12).text(nombre, 60, yInicio, { width: 350 });
+        doc.font("Helvetica").fillColor("#555").fontSize(12).text(`$${precioPagado.toFixed(2)} x ${p.cantidad || 1}`, 60, yInicio + 18, { width: 350 });
 
-        //-----------------------------------------------
-        // Miniatura
-        //-----------------------------------------------
+        // Imagen
         if (p.imagen) {
           try {
             const response = await axios.get(p.imagen, { responseType: "arraybuffer" });
             const buffer = Buffer.from(response.data, "binary");
             doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80] });
           } catch (err) {
-            console.error("❌ Error cargando imagen:", err.message);
+            console.error("❌ Error cargando imagen remota:", err.message);
           }
         }
 
-        //-----------------------------------------------
-        // Separador
-        //-----------------------------------------------
         doc.moveDown(6);
         doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
         doc.moveDown(0.5);
       }
 
-      //-----------------------------------------------
       // Pie de página
-      //-----------------------------------------------
-      doc.moveDown(1);
-      doc.fontSize(10)
-        .fillColor("#555")
-        .text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
-
+      doc.moveDown(1).fontSize(10).fillColor("#555").text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
       doc.end();
+
     } catch (err) {
       reject(err);
     }
@@ -124,32 +88,27 @@ async function generarPDF(orden) {
 
 
 
+
 //-------------------------------------------------------------------------------
 // 📌 Enviar PDF por correo
 //-------------------------------------------------------------------------------
-const nodemailer = require("nodemailer");
-const { generarPDF } = require("./generarPDF"); // Ajusta la ruta si tu archivo es diferente
-
 async function enviarPDFporCorreo(orden) {
   try {
-    // 🔹 Generar PDF de la orden
     const pdfBuffer = await generarPDF(orden);
 
-    // 🔹 Configurar transportador de Gmail
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.EMAIL_USER, // tu correo
-        pass: process.env.EMAIL_PASS, // app password o contraseña real
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
       },
     });
 
-    // 🔹 Enviar correo con PDF adjunto
     await transporter.sendMail({
       from: '"Mini E-commerce" <rafbar2000rr@gmail.com>',
-      to: orden.usuario?.email || orden.datosCliente?.email || "no-reply@example.com",
-      subject: `Confirmación de tu orden #${orden._id}`,
-      text: `Hola ${orden.datosCliente?.nombre || ""},\n\nGracias por tu compra. Adjuntamos el detalle de tu orden en PDF.\n\nSaludos, Mini E-commerce.`,
+      to: orden.usuario?.email || "no-reply@example.com",
+      subject: "Confirmación de tu orden",
+      text: "Gracias por tu compra. Adjuntamos el detalle de tu orden en PDF.",
       attachments: [
         {
           filename: `orden_${orden._id}.pdf`,
@@ -159,13 +118,11 @@ async function enviarPDFporCorreo(orden) {
       ],
     });
 
-    console.log("📩 Correo enviado con PDF a", orden.usuario?.email || orden.datosCliente?.email);
+    console.log("📩 Correo enviado con PDF a", orden.usuario?.email);
   } catch (err) {
     console.error("❌ Error enviando correo:", err.message);
     throw err;
   }
 }
-
-
 
 module.exports = { generarPDF, enviarPDFporCorreo };

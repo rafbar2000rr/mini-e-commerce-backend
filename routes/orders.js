@@ -9,7 +9,6 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const mongoose = require("mongoose");
 const axios = require("axios");
 
-
 //----------------------------------------------------
 // 🛍️ Crear orden con PayPal y precios congelados (versión segura)
 //----------------------------------------------------
@@ -38,6 +37,7 @@ router.post("/orders", verifyToken, async (req, res) => {
       `https://api-m.sandbox.paypal.com/v2/checkout/orders/${paypalOrderId}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
+
     if (paypalData.status !== "COMPLETED")
       return res.status(400).json({ error: "El pago de PayPal no ha sido completado" });
 
@@ -49,14 +49,15 @@ router.post("/orders", verifyToken, async (req, res) => {
         if (!producto) return null;
 
         const cantidad = item.cantidad || 1;
-        const precioPagado = producto.precio; // <-- precio congelado garantizado
-        totalCalculado += precioPagado * cantidad;
+        const precio = producto.precio ?? 0;
+
+        totalCalculado += precio * cantidad;
 
         return {
           productoId: producto._id,
-          nombre: producto.nombre || "Producto sin nombre",
-          precio: producto.precio || 0,
-          precioPagado, // <-- aseguramos que siempre tenga valor
+          nombre: producto.nombre || "Sin nombre",
+          precio,
+          precioPagado: precio, // 🔹 Precio congelado seguro
           imagen: producto.imagen || "/placeholder.png",
           cantidad,
         };
@@ -76,7 +77,6 @@ router.post("/orders", verifyToken, async (req, res) => {
       total: totalCalculado,
       datosCliente,
     });
-
     await nuevaOrden.save();
 
     // 🔹 Vaciar carrito
@@ -84,9 +84,7 @@ router.post("/orders", verifyToken, async (req, res) => {
 
     // 🔹 Enviar PDF por correo
     try {
-      // 🚨 Aquí usamos el objeto recién guardado en DB para que llegue todo completo
-      const ordenConDatos = await Order.findById(nuevaOrden._id).populate("productos.productoId");
-      await enviarPDFporCorreo(ordenConDatos);
+      await enviarPDFporCorreo(nuevaOrden);
       console.log("📩 PDF enviado al correo del cliente");
     } catch (err) {
       console.error("❌ No se pudo enviar el PDF:", err.message);

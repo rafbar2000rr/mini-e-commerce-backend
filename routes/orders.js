@@ -1,83 +1,66 @@
 const express = require("express");
-const router = express.Router();   // ✅ Aquí defines router
+const router = express.Router();
 const Order = require("../models/Order");
-const User = require("../models/User"); // ✅ Modelo de usuario
-const verifyToken = require("../middleware/verifyToken");
-const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
+const User = require("../models/User");
 const Producto = require("../models/Producto");
-const mongoose = require("mongoose");
+const verifyToken = require("../middleware/verifyToken");
 const isAdmin = require("../middleware/isAdmin");
+const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
+const mongoose = require("mongoose");
 const axios = require("axios");
 
-//---------------------------------------------------------------------------------------------
-// 📦 Crear orden y enviar correo
-// Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos
-// directamente desde la base de datos (para que nadie altere precios), calcula el total, guarda la orden,
-// vacía el carrito, y envía la orden al correo.
-// routes/orders.js
-
 //----------------------------------------------------
-// 🛍️ Crear una nueva orden (con precios congelados)
+// 🛍️ Crear orden con PayPal y precios congelados
 //----------------------------------------------------
-
-// 🛍️ Crear orden con integración PayPal, vaciar carrito y enviar PDF
 router.post("/orders", verifyToken, async (req, res) => {
   try {
     const { productos, datosCliente, paypalOrderId } = req.body;
     const userId = req.userId;
 
-    if (!productos || productos.length === 0) {
+    if (!productos || productos.length === 0)
       return res.status(400).json({ error: "No hay productos en la orden" });
-    }
 
-    if (!paypalOrderId) {
+    if (!paypalOrderId)
       return res.status(400).json({ error: "Falta paypalOrderId" });
-    }
 
     //----------------------------------------------------
-    // 🔹 Verificar el pago en PayPal
+    // 🔹 Verificar pago en PayPal
     //----------------------------------------------------
-    const PAYPAL_CLIENT = process.env.PAYPAL_CLIENT_ID;
-    const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
-
-    // Obtener token de acceso
     const auth = await axios({
       url: "https://api-m.sandbox.paypal.com/v1/oauth2/token",
       method: "post",
-      headers: {
-        "Accept": "application/json",
-        "Accept-Language": "en_US",
-      },
-      auth: { username: PAYPAL_CLIENT, password: PAYPAL_SECRET },
+      headers: { "Accept": "application/json", "Accept-Language": "en_US" },
+      auth: { username: process.env.PAYPAL_CLIENT_ID, password: process.env.PAYPAL_SECRET },
       params: { grant_type: "client_credentials" },
     });
-
     const accessToken = auth.data.access_token;
 
-    // Consultar la orden
     const { data: paypalData } = await axios.get(
       `https://api-m.sandbox.paypal.com/v2/checkout/orders/${paypalOrderId}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-
-    if (paypalData.status !== "COMPLETED") {
+    if (paypalData.status !== "COMPLETED")
       return res.status(400).json({ error: "El pago de PayPal no ha sido completado" });
-    }
 
     //----------------------------------------------------
-    // 🔹 Obtener datos actuales de productos
+    // 🔹 Obtener productos de DB y calcular total
     //----------------------------------------------------
+    let totalCalculado = 0;
     const productosDetallados = await Promise.all(
       productos.map(async (item) => {
         const producto = await Producto.findById(item.productoId);
         if (!producto) return null;
 
+        const cantidad = item.cantidad || 1;
+        totalCalculado += producto.precio * cantidad;
+
         return {
           productoId: producto._id,
           nombre: producto.nombre,
           precio: producto.precio,
+          precioPagado: producto.precio,
           imagen: producto.imagen,
-          cantidad: item.cantidad || 1,
+          cantidad,
         };
       })
     );
@@ -86,13 +69,8 @@ router.post("/orders", verifyToken, async (req, res) => {
     if (productosValidos.length === 0)
       return res.status(400).json({ error: "Ningún producto válido en la orden" });
 
-    const totalCalculado = productosValidos.reduce(
-      (sum, p) => sum + p.precio * p.cantidad,
-      0
-    );
-
     //----------------------------------------------------
-    // 🧾 Crear orden marcada como COMPLETED
+    // 🧾 Crear la orden
     //----------------------------------------------------
     const nuevaOrden = new Order({
       paypalOrderId,
@@ -101,18 +79,13 @@ router.post("/orders", verifyToken, async (req, res) => {
       productos: productosValidos,
       total: totalCalculado,
       datosCliente,
-      fecha: new Date(),
     });
-
     await nuevaOrden.save();
 
     //----------------------------------------------------
     // 🔹 Vaciar carrito
     //----------------------------------------------------
-    // await Carrito.findOneAndUpdate(
-    //   { usuario: userId },
-    //   { productos: [] }
-    // );
+    await User.findByIdAndUpdate(userId, { carrito: [] });
 
     //----------------------------------------------------
     // 🔹 Enviar PDF por correo
@@ -125,7 +98,7 @@ router.post("/orders", verifyToken, async (req, res) => {
     }
 
     res.status(201).json({
-      mensaje: "Orden creada y completada con éxito, carrito vaciado y PDF enviado",
+      mensaje: "Orden creada con precios congelados, carrito vaciado y PDF enviado",
       orden: nuevaOrden,
     });
 
@@ -135,176 +108,171 @@ router.post("/orders", verifyToken, async (req, res) => {
   }
 });
 
-
-//----------------------------------------------------------------------------------------------
-// ✅ Obtener detalle de una orden por ID (solo si pertenece al usuario). Este endpoint sirve para que un usuario autenticado pueda consultar una orden específica que le pertenece, validando que el ID sea correcto, asegurando que no acceda a órdenes de otros y devolviendo los datos limpios sin el __v.
+//----------------------------------------------------
+// ✅ Obtener detalle de orden por ID (usuario)
+//----------------------------------------------------
 router.get("/orders/:id", verifyToken, async (req, res) => {
   try {
+    const { id: orderId } = req.params;
     const userId = req.userId;
-    const orderId = req.params.id;
 
-    // ✅ Validar ID
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    if (!mongoose.Types.ObjectId.isValid(orderId))
       return res.status(400).json({ error: "ID de orden inválido" });
-    }
 
-    // ✅ Buscar la orden del usuario y poblar productos usando "productoId"
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
-      .select("-__v")
-      .populate("productos.productoId", "nombre imagen precio");
+      .populate("productos.productoId", "nombre imagen precio")
+      .select("-__v");
 
-    if (!orden) {
-      return res.status(404).json({ error: "Orden no encontrada" });
-    }
+    if (!orden) return res.status(404).json({ error: "Orden no encontrada" });
 
-    res.json(orden);
+    const ordenFormateada = {
+      ...orden.toObject(),
+      productos: orden.productos.map((p) => ({
+        nombre: p.nombre || p.productoId?.nombre || "Producto eliminado",
+        precioPagado: p.precioPagado ?? p.precio ?? 0,
+        precioActual: p.productoId?.precio ?? p.precio ?? 0,
+        imagen: p.imagen || p.productoId?.imagen || "/placeholder.png",
+        cantidad: p.cantidad,
+      })),
+    };
+
+    res.json(ordenFormateada);
+
   } catch (error) {
     console.error("❌ Error al obtener detalle de la orden:", error.message);
     res.status(500).json({ error: "Error al obtener detalle de la orden" });
   }
 });
 
-//----------------------------------------------------------------------------------------------
-// ✅ Descargar orden en PDF. Este endpoint permite que un usuario autenticado descargue un PDF con el detalle de una orden que le pertenece. No guarda el archivo en el servidor, sino que lo genera en memoria y lo envía como descarga directa al navegador.
-// Descargar orden en PDF
+//----------------------------------------------------
+// ✅ Descargar PDF de orden
+//----------------------------------------------------
 router.get("/orders/:id/pdf", verifyToken, async (req, res) => {
   try {
+    const { id: orderId } = req.params;
     const userId = req.userId;
-    const orderId = req.params.id;
 
     const orden = await Order.findOne({ _id: orderId, usuario: userId })
       .populate("usuario")
       .populate("productos.productoId", "nombre imagen precio");
 
-    if (!orden) {
-      return res.status(404).json({ error: "Orden no encontrada" });
-    }
+    if (!orden) return res.status(404).json({ error: "Orden no encontrada" });
 
-    const pdfBuffer = await generarPDF(orden);
+    const ordenParaPDF = {
+      ...orden.toObject(),
+      productos: orden.productos.map((p) => ({
+        nombre: p.nombre || p.productoId?.nombre || "Producto eliminado",
+        precioPagado: p.precioPagado ?? p.precio ?? 0,
+        precioActual: p.productoId?.precio ?? p.precio ?? 0,
+        imagen: p.imagen || p.productoId?.imagen || "/placeholder.png",
+        cantidad: p.cantidad,
+      })),
+    };
+
+    const pdfBuffer = await generarPDF(ordenParaPDF);
 
     res.set({
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename=orden_${orden._id}.pdf`,
     });
-
     res.send(pdfBuffer);
+
   } catch (error) {
     console.error("❌ Error al generar PDF:", error.message);
     res.status(500).json({ error: "Error al generar el PDF" });
   }
 });
 
-//--------------------------------------------------------------------------------------------------------------------
-// ✅ Obtener todas las órdenes del usuario autenticado
-// Este endpoint sirve para que un usuario logueado vea todo su historial de compras, con:
-// Sus productos populados (detalles completos, no solo IDs).
-// Ordenados desde el más reciente al más antiguo.
+//----------------------------------------------------
+// ✅ Listar órdenes del usuario
+//----------------------------------------------------
 router.get("/my-orders", verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
-    console.log("👤 Buscando órdenes para usuario:", userId);
 
     const ordenes = await Order.find({ usuario: userId })
-      .select("productos total estado status datosCliente fecha")
+      .select("productos total estado status datosCliente createdAt")
       .populate("productos.productoId", "nombre precio imagen")
-      .sort({ fecha: -1 });
+      .sort({ createdAt: -1 });
 
     const ordenesFormateadas = ordenes.map((orden) => ({
       _id: orden._id,
       total: orden.total,
       estado: orden.estado,
       status: orden.status,
-      fecha: orden.fecha,
+      fecha: orden.createdAt,
       datosCliente: orden.datosCliente,
       productos: orden.productos.map((p) => ({
-        nombre: p.productoId?.nombre || p.nombre || "Producto eliminado",
-        precio: p.productoId?.precio || p.precio || 0,
-        imagen:
-          p.productoId?.imagen || p.imagen || "/placeholder.png", // 👈 siempre devuelve algo
+        nombre: p.nombre || p.productoId?.nombre || "Producto eliminado",
+        precioPagado: p.precioPagado ?? p.precio ?? 0,
+        precioActual: p.productoId?.precio ?? p.precio ?? 0,
+        imagen: p.imagen || p.productoId?.imagen || "/placeholder.png",
         cantidad: p.cantidad,
       })),
     }));
 
-    console.log("📦 Órdenes enviadas al cliente:", ordenesFormateadas.length);
     res.json(ordenesFormateadas);
+
   } catch (error) {
     console.error("❌ Error al obtener órdenes del usuario:", error.message);
     res.status(500).json({ error: "Error al obtener tus órdenes" });
   }
 });
 
-
-//-------------------------------------------------------------------
-// ✅ Obtener todas las órdenes de todos los usuarios (para admin)
-
-
-// Solo admins pueden ver todas las órdenes
+//----------------------------------------------------
+// ✅ Listar todas las órdenes (admin)
+//----------------------------------------------------
 router.get("/orders", verifyToken, isAdmin, async (req, res) => {
   try {
     const ordenes = await Order.find()
       .populate("usuario", "nombre email rol")
       .populate("productos.productoId", "nombre precio imagen")
-      .sort({ fecha: -1 });
+      .sort({ createdAt: -1 });
 
-    // 🧩 Aplanamos los productos para que incluyan directamente nombre, precio y cantidad
     const ordenesFormateadas = ordenes.map((orden) => ({
       _id: orden._id,
       usuario: orden.usuario,
       total: orden.total,
       estado: orden.estado,
-      fecha: orden.fecha,
+      fecha: orden.createdAt,
       productos: orden.productos.map((p) => ({
         nombre: p.productoId?.nombre || "Producto eliminado",
-        precio: p.productoId?.precio || 0,
+        precioPagado: p.precioPagado ?? p.precio ?? 0,
+        precioActual: p.productoId?.precio ?? p.precio ?? 0,
         cantidad: p.cantidad,
       })),
     }));
 
     res.json(ordenesFormateadas);
+
   } catch (error) {
     console.error("❌ Error al obtener todas las órdenes:", error.message);
     res.status(500).json({ error: "Error al obtener todas las órdenes" });
   }
 });
 
+//----------------------------------------------------
+// ✅ Actualizar estado de orden (solo admin)
+//----------------------------------------------------
+router.patch("/orders/:id", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const { estado } = req.body;
+    if (!estado) return res.status(400).json({ error: "El campo 'estado' es obligatorio" });
 
-//-----------------------------------------------------------------------
-// ✅ Actualizar estado de una orden (pendiente → enviado → entregado)
-router.patch(
-  "/orders/:id", verifyToken, isAdmin,
-       // 🔹 Verifica que el usuario esté logueado
-       // 🔹 Verifica que sea admin
-  async (req, res) => {
-    try {
-      const { estado } = req.body;
+    const ordenActualizada = await Order.findByIdAndUpdate(
+      req.params.id,
+      { estado },
+      { new: true }
+    );
 
-      // Validar que manden el estado
-      if (!estado) {
-        return res.status(400).json({ error: "El campo 'estado' es obligatorio" });
-      }
+    if (!ordenActualizada) return res.status(404).json({ error: "Orden no encontrada" });
 
-      // Buscar y actualizar
-      const ordenActualizada = await Order.findByIdAndUpdate(
-        req.params.id,
-        { estado },
-        { new: true } // devuelve la orden actualizada
-      );
+    res.json(ordenActualizada);
 
-      if (!ordenActualizada) {
-        return res.status(404).json({ error: "Orden no encontrada" });
-      }
-
-      // ✅ Devolvemos la orden actualizada
-      res.json(ordenActualizada);
-
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Error actualizando la orden" });
-    }
+  } catch (error) {
+    console.error("❌ Error actualizando la orden:", error.message);
+    res.status(500).json({ error: "Error actualizando la orden" });
   }
-);
-
-
-
+});
 
 module.exports = router;

@@ -7,7 +7,8 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
 const isAdmin = require("../middleware/isAdmin");
-
+const axios = require("axios");
+const Carrito = require("../models/Carrito");
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
 // Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos
@@ -18,17 +19,6 @@ const isAdmin = require("../middleware/isAdmin");
 //----------------------------------------------------
 // 🛍️ Crear una nueva orden (con precios congelados)
 //----------------------------------------------------
-//----------------------------------------------------
-// 🛍️ Crear una nueva orden (con precios congelados)
-//----------------------------------------------------
-const express = require("express");
-const router = express.Router();
-const Order = require("../models/Order");
-const Producto = require("../models/Producto");
-const Carrito = require("../models/Carrito");
-const verifyToken = require("../middleware/verifyToken");
-const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
-const axios = require("axios");
 
 // 🛍️ Crear orden con integración PayPal, vaciar carrito y enviar PDF
 router.post("/orders", verifyToken, async (req, res) => {
@@ -144,9 +134,6 @@ router.post("/orders", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Error al crear la orden" });
   }
 });
-
-
-
 
 
 //----------------------------------------------------------------------------------------------

@@ -73,12 +73,27 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
     const amount = parseFloat(capture.amount.value);
     const currency = capture.amount.currency_code;
 
+    // 🔹 Completar datos de productos antes de crear la orden
+    const productosCompletos = await Promise.all(
+      req.body.productos.map(async (item) => {
+        const productoDB = await Producto.findById(item.productoId || item._id);
+        return {
+          productoId: productoDB._id,
+          nombre: productoDB.nombre,
+          precio: productoDB.precio,
+          precioPagado: productoDB.precio,
+          cantidad: item.cantidad,
+          imagen: productoDB.imagen,
+        };
+      })
+    );
+
     // 🔹 Crear nueva orden asociada al usuario autenticado
     const nuevaOrden = new Order({
       usuario: req.userId,
       paypalOrderId: orderID,
       status: captureData.status,
-      productos: req.body.productos,
+      productos: productosCompletos,
       datosCliente: {
         ...req.body.datosCliente,
         direccion: req.body.datosCliente?.direccion || "Sin dirección",
@@ -99,8 +114,8 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
     }
 
     // 🔹 Actualizar stock
-    for (const item of req.body.productos) {
-      const producto = await Producto.findById(item.productoId || item._id);
+    for (const item of productosCompletos) {
+      const producto = await Producto.findById(item.productoId);
       if (!producto) continue;
 
       if (producto.stock >= item.cantidad) {

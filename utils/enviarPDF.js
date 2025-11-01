@@ -23,13 +23,13 @@ async function generarPDF(orden) {
         .fillColor("#D63384")
         .font("Helvetica-Bold")
         .fontSize(26)
-        .text("Mini E-commerce", { align: "center" });
+        .text("mini e-commerce", { align: "center" });
       doc
         .moveDown(0.3)
         .font("Helvetica")
         .fontSize(14)
         .fillColor("#666")
-        .text("Gracias por tu compra 💖", { align: "center" });
+        .text("Gracias por tu compra", { align: "center" });
       doc
         .moveDown(0.5)
         .strokeColor("#D63384")
@@ -166,7 +166,7 @@ async function generarPDF(orden) {
         .fontSize(10)
         .fillColor("#555")
         .text(
-          "Gracias por tu compra en Mini E-commerce 💕 ¡Esperamos verte pronto!",
+          "Gracias por tu compra en mini e-commerce ¡Esperamos verte pronto!",
           { align: "center" }
         );
 

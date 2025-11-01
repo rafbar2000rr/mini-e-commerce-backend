@@ -42,6 +42,7 @@ router.post("/create-order", async (req, res) => {
 });
 
 // ✅ Capturar pago, guardar orden y actualizar stock + vaciar carrito
+// ✅ Capturar pago, guardar orden y actualizar stock + vaciar carrito
 router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
   try {
     const { orderID } = req.params;
@@ -73,27 +74,37 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
     const amount = parseFloat(capture.amount.value);
     const currency = capture.amount.currency_code;
 
-    // 🔹 Completar datos de productos antes de crear la orden
-    const productosCompletos = await Promise.all(
-      req.body.productos.map(async (item) => {
-        const productoDB = await Producto.findById(item.productoId || item._id);
-        return {
-          productoId: productoDB._id,
-          nombre: productoDB.nombre,
-          precio: productoDB.precio,
-          precioPagado: productoDB.precio,
+    // 🔹 Obtener detalles completos de los productos
+    const productosDetallados = [];
+
+    for (const item of req.body.productos) {
+      const producto = await Producto.findById(item.productoId || item._id);
+
+      if (producto) {
+        productosDetallados.push({
+          productoId: producto._id,
+          nombre: producto.nombre,
+          precio: producto.precio,
+          precioPagado: producto.precio, // Precio congelado al momento de compra
           cantidad: item.cantidad,
-          imagen: productoDB.imagen,
-        };
-      })
-    );
+        });
+
+        // 🔹 Actualizar stock
+        if (producto.stock >= item.cantidad) {
+          producto.stock -= item.cantidad;
+          await producto.save();
+        } else {
+          console.warn(`⚠️ Stock insuficiente para ${producto.nombre}`);
+        }
+      }
+    }
 
     // 🔹 Crear nueva orden asociada al usuario autenticado
     const nuevaOrden = new Order({
       usuario: req.userId,
       paypalOrderId: orderID,
       status: captureData.status,
-      productos: productosCompletos,
+      productos: productosDetallados,
       datosCliente: {
         ...req.body.datosCliente,
         direccion: req.body.datosCliente?.direccion || "Sin dirección",
@@ -103,6 +114,7 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
         moneda: currency,
       },
       total: amount,
+      fecha: new Date(), // ✅ Guardar fecha actual
     });
 
     await nuevaOrden.save();
@@ -111,19 +123,6 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
     if (req.userId) {
       await User.findByIdAndUpdate(req.userId, { carrito: [] });
       console.log(`🧹 Carrito vaciado para usuario con ID: ${req.userId}`);
-    }
-
-    // 🔹 Actualizar stock
-    for (const item of productosCompletos) {
-      const producto = await Producto.findById(item.productoId);
-      if (!producto) continue;
-
-      if (producto.stock >= item.cantidad) {
-        producto.stock -= item.cantidad;
-        await producto.save();
-      } else {
-        console.warn(`⚠️ Stock insuficiente para ${producto.nombre}`);
-      }
     }
 
     res.json({

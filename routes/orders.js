@@ -9,8 +9,9 @@ const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
 const mongoose = require("mongoose");
 const axios = require("axios");
 
+
 //----------------------------------------------------
-// 🛍️ Crear orden con PayPal y precios congelados
+// 🛍️ Crear orden con PayPal y precios congelados (versión segura)
 //----------------------------------------------------
 router.post("/orders", verifyToken, async (req, res) => {
   try {
@@ -48,18 +49,21 @@ router.post("/orders", verifyToken, async (req, res) => {
     let totalCalculado = 0;
     const productosDetallados = await Promise.all(
       productos.map(async (item) => {
+        if (!item.productoId) return null; // proteger si no viene productoId
         const producto = await Producto.findById(item.productoId);
         if (!producto) return null;
 
         const cantidad = item.cantidad || 1;
-        totalCalculado += producto.precio * cantidad;
+        const precio = producto.precio ?? 0;
+
+        totalCalculado += precio * cantidad;
 
         return {
           productoId: producto._id,
-          nombre: producto.nombre,
-          precio: producto.precio,
-          precioPagado: producto.precio,
-          imagen: producto.imagen,
+          nombre: producto.nombre || "Producto sin nombre",
+          precio,
+          precioPagado: precio,  // ✅ precio congelado
+          imagen: producto.imagen || "/placeholder.png",
           cantidad,
         };
       })
@@ -107,7 +111,6 @@ router.post("/orders", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Error al crear la orden" });
   }
 });
-
 //----------------------------------------------------
 // ✅ Obtener detalle de orden por ID (usuario)
 //----------------------------------------------------

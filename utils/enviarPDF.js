@@ -4,7 +4,7 @@ const axios = require("axios");
 const { Buffer } = require("buffer");
 
 //-------------------------------------------------------------------------------
-// 📌 Genera un PDF estilo catálogo profesional con precios congelados y actuales
+// 📌 Genera un PDF estilo catálogo profesional usando precios congelados
 //-------------------------------------------------------------------------------
 async function generarPDF(orden) {
   return new Promise(async (resolve, reject) => {
@@ -66,34 +66,35 @@ async function generarPDF(orden) {
         const yInicio = doc.y;
 
         //-----------------------------------------------
-        // Caja sombreada
+        // 🔹 Caja sombreada por producto
         //-----------------------------------------------
         doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
         doc.fillOpacity(1);
 
         //-----------------------------------------------
-        // Datos del producto
+        // 🔹 Datos del producto (nombre, cantidad, precios)
         //-----------------------------------------------
         const nombre = p.nombre || "Producto sin nombre";
-        const precioPagado = p.precioPagado || 0;
-        const precioActual = p.precioActual || p.precio || 0;
         const cantidad = p.cantidad || 1;
-        const subtotal = precioPagado * cantidad;
+        const precioPagado = p.precioPagado ?? 0;
+        const precioActual = p.precioActual ?? 0;
 
         doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
           .text(nombre, 60, yInicio, { width: 350 });
         doc.font("Helvetica").fillColor("#555").fontSize(12)
-          .text(`Cantidad: ${cantidad}`, 60, yInicio + 18, { width: 200 })
-          .text(`Precio Pagado: $${precioPagado.toFixed(2)}`, 60, yInicio + 33, { width: 200 })
-          .text(`Precio Actual: $${precioActual.toFixed(2)}`, 60, yInicio + 48, { width: 200 })
-          .text(`Subtotal: $${subtotal.toFixed(2)}`, 60, yInicio + 63, { width: 200 });
+          .text(`Cantidad: ${cantidad}`, 60, yInicio + 18, { width: 350 });
+        doc.font("Helvetica").fillColor("#555").fontSize(12)
+          .text(`Precio congelado: $${precioPagado.toFixed(2)}`, 60, yInicio + 33, { width: 350 });
+        doc.font("Helvetica").fillColor("#777").fontSize(10)
+          .text(`Precio actual: $${precioActual.toFixed(2)}`, 60, yInicio + 48, { width: 350 });
 
         //-----------------------------------------------
-        // Imagen del producto
+        // 🔹 Miniatura a la derecha
         //-----------------------------------------------
-        if (p.imagen) {
+        const imgUrl = p.imagen;
+        if (imgUrl) {
           try {
-            const response = await axios.get(p.imagen, { responseType: "arraybuffer" });
+            const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
             const buffer = Buffer.from(response.data, "binary");
             doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80] });
           } catch (err) {
@@ -102,7 +103,7 @@ async function generarPDF(orden) {
         }
 
         //-----------------------------------------------
-        // Separador elegante
+        // 🔹 Separador elegante
         //-----------------------------------------------
         doc.moveDown(6);
         doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
@@ -125,6 +126,7 @@ async function generarPDF(orden) {
   });
 }
 
+
 //-------------------------------------------------------------------------------
 // 📌 Enviar PDF por correo
 //-------------------------------------------------------------------------------
@@ -142,7 +144,7 @@ async function enviarPDFporCorreo(orden) {
 
     await transporter.sendMail({
       from: '"Mini E-commerce" <rafbar2000rr@gmail.com>',
-      to: orden.usuario?.email || orden.datosCliente?.email || "no-reply@example.com",
+      to: orden.usuario?.email || "no-reply@example.com",
       subject: "Confirmación de tu orden",
       text: "Gracias por tu compra. Adjuntamos el detalle de tu orden en PDF.",
       attachments: [
@@ -154,7 +156,7 @@ async function enviarPDFporCorreo(orden) {
       ],
     });
 
-    console.log("📩 Correo enviado con PDF a", orden.usuario?.email || orden.datosCliente?.email);
+    console.log("📩 Correo enviado con PDF a", orden.usuario?.email);
   } catch (err) {
     console.error("❌ Error enviando correo:", err.message);
     throw err;

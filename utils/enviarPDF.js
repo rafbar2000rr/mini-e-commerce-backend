@@ -1,109 +1,164 @@
-// utils/enviarPDF.js
-const PDFDocument = require("pdfkit");
 const nodemailer = require("nodemailer");
+const PDFDocument = require("pdfkit");
+const axios = require("axios");
+const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
+const { Buffer } = require("buffer");
 
-// Generar PDF de la orden estilo recibo profesional
+//-------------------------------------------------------------------------------
+// 📌 Genera un PDF estilo catálogo profesional usando precios congelados de la orden
+// y evita que las imágenes se corten al pasar de página
+//-------------------------------------------------------------------------------
+// 🧠 Función para generar el PDF de la orden
 async function generarPDF(orden) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
-      
+
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
-      // ---------- Encabezado ----------
-      doc.fillColor("#333").fontSize(22).text("📦 Detalle de tu Orden", { align: "center" });
+      const PAGE_HEIGHT = doc.page.height - doc.page.margins.bottom; // altura usable de la página
+      const PRODUCT_BOX_HEIGHT = 100; // altura aproximada de cada producto con imagen
+
+      //-----------------------------------------------
+      // 🎀 Encabezado
+      //-----------------------------------------------
+      doc.fillColor("#D63384")
+        .fontSize(22)
+        .text("Detalle de la Orden", { align: "center", underline: true });
+      doc.moveDown(1);
+
+      //-----------------------------------------------
+      // ID, fecha y total
+      //-----------------------------------------------
+      doc.fillColor("black").fontSize(12);
+      doc.text(`ID de la Orden: ${orden._id}`);
+      doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
+      doc.font("Helvetica-Bold").text(`Total: $${orden.total.toFixed(2)}`);
+      doc.moveDown(1);
+
+      //-----------------------------------------------
+      // 📦 Datos del cliente
+      //-----------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
+        "Datos del Cliente:", { underline: true }
+      );
+      doc.moveDown(0.5);
+      doc.font("Helvetica").fillColor("black");
+      doc.text(`Nombre: ${orden.datosCliente?.nombre || "No disponible"}`);
+      doc.text(`Email: ${orden.datosCliente?.email || "No disponible"}`);
+      doc.text(`Dirección: ${orden.datosCliente?.direccion || "No disponible"}`);
+      doc.text(`Ciudad: ${orden.datosCliente?.ciudad || "No disponible"}`);
+      doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal || "No disponible"}`);
+      doc.moveDown(1);
+
+      //-----------------------------------------------
+      // 📌 Productos de la orden (con precios congelados)
+      //-----------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
+        "Productos:", { underline: true }
+      );
       doc.moveDown(0.5);
 
-      doc.fontSize(12).fillColor("#555");
-      doc.text(`Orden ID: ${orden._id}`);
-      doc.text(`Fecha: ${orden.fecha.toLocaleString()}`);
-      doc.text(`Cliente: ${orden.datosCliente.nombre}`);
-      doc.text(`Email: ${orden.datosCliente.email}`);
-      doc.text(`Dirección: ${orden.datosCliente.direccion}, ${orden.datosCliente.ciudad} - ${orden.datosCliente.codigoPostal}`);
-      doc.moveDown();
-
-      // ---------- Tabla de productos ----------
-      const startX = doc.x;
-      const startY = doc.y;
-      const tableWidth = 500;
-
-      doc.fontSize(12).fillColor("#333").text("Productos:", startX, startY);
-      doc.moveDown(0.5);
-
-      // Encabezado de tabla
-      const tableHeaders = ["#", "Producto", "Cantidad", "Precio Pagado", "Precio Actual", "Subtotal"];
-      const columnWidths = [20, 200, 60, 80, 80, 60];
-      let y = doc.y;
-
-      // Dibujar encabezado
-      doc.fillColor("#fff").rect(startX, y, tableWidth, 20).fill("#4CAF50");
-      doc.fillColor("#fff");
-      let x = startX;
-      for (let i = 0; i < tableHeaders.length; i++) {
-        doc.text(tableHeaders[i], x + 2, y + 5, { width: columnWidths[i], align: "left" });
-        x += columnWidths[i];
-      }
-      y += 20;
-
-      // Dibujar filas
-      doc.fillColor("#000");
-      orden.productos.forEach((p, i) => {
-        x = startX;
-        const subtotal = (p.precioPagado || 0) * (p.cantidad || 1);
-
-        const rowHeight = 20;
-        // Fondo alternado
-        if (i % 2 === 0) doc.rect(startX, y, tableWidth, rowHeight).fill("#f2f2f2").fillColor("#000");
-
-        const values = [
-          i + 1,
-          p.nombre,
-          p.cantidad,
-          `$${p.precioPagado.toFixed(2)}`,
-          `$${p.precioActual.toFixed(2)}`,
-          `$${subtotal.toFixed(2)}`
-        ];
-
-        for (let j = 0; j < values.length; j++) {
-          doc.text(values[j], x + 2, y + 5, { width: columnWidths[j], align: "left" });
-          x += columnWidths[j];
+      for (const p of orden.productos) {
+        // 🔹 Saltar de página si no hay espacio suficiente
+        if (doc.y + PRODUCT_BOX_HEIGHT > PAGE_HEIGHT) {
+          doc.addPage();
         }
-        y += rowHeight;
-      });
 
-      doc.moveDown(orden.productos.length * 0.5 + 1);
+        const yInicio = doc.y;
 
-      // ---------- Total ----------
-      doc.fontSize(14).fillColor("#333").text(`💰 Total: $${orden.total.toFixed(2)}`, { align: "right" });
+        //-----------------------------------------------
+        // 🔹 Caja sombreada por producto
+        //-----------------------------------------------
+        doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
+        doc.fillOpacity(1);
+
+        //-----------------------------------------------
+        // 🔹 Datos del producto (nombre y precio congelado)
+        //-----------------------------------------------
+        const nombre = p.nombre || "Producto sin nombre";
+        const precio = p.precio || 0;
+
+        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
+          .text(nombre, 60, yInicio, { width: 350 });
+        doc.font("Helvetica").fillColor("#555").fontSize(12)
+          .text(`$${precio} x ${p.cantidad || 1}`, 60, yInicio + 18, { width: 350 });
+
+        //-----------------------------------------------
+        // 🔹 Miniatura a la derecha (imagen congelada)
+        //-----------------------------------------------
+        const imgUrl = p.imagen;
+        if (imgUrl) {
+          try {
+            const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
+            const buffer = Buffer.from(response.data, "binary");
+            doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80] });
+          } catch (err) {
+            console.error("❌ Error cargando imagen remota:", err.message);
+          }
+        }
+
+        //-----------------------------------------------
+        // 🔹 Separador elegante
+        //-----------------------------------------------
+        doc.moveDown(6);
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
+        doc.moveDown(0.5);
+      }
+
+      //-----------------------------------------------
+      // Pie de página
+      //-----------------------------------------------
+      doc.moveDown(1);
+      doc.fontSize(10)
+        .fillColor("#555")
+        .text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
 
       doc.end();
-    } catch (error) {
-      reject(error);
+
+    } catch (err) {
+      reject(err);
     }
   });
 }
 
-// ---------- Enviar PDF por correo ----------
+
+//-------------------------------------------------------------------------------
+// 📌 Enviar PDF por correo
+//-------------------------------------------------------------------------------
 async function enviarPDFporCorreo(orden) {
-  const pdfBuffer = await generarPDF(orden);
+  try {
+    const pdfBuffer = await generarPDF(orden);
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
 
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: orden.datosCliente.email,
-    subject: `Detalle de tu orden ${orden._id}`,
-    text: "Adjuntamos el PDF con el detalle de tu orden.",
-    attachments: [{ filename: `orden_${orden._id}.pdf`, content: pdfBuffer }],
-  });
+    await transporter.sendMail({
+      from: '"Mini E-commerce" <rafbar2000rr@gmail.com>',
+      to: orden.usuario?.email || "no-reply@example.com",
+      subject: "Confirmación de tu orden",
+      text: "Gracias por tu compra. Adjuntamos el detalle de tu orden en PDF.",
+      attachments: [
+        {
+          filename: `orden_${orden._id}.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+
+    console.log("📩 Correo enviado con PDF a", orden.usuario?.email);
+  } catch (err) {
+    console.error("❌ Error enviando correo:", err.message);
+    throw err;
+  }
 }
 
 module.exports = { generarPDF, enviarPDFporCorreo };

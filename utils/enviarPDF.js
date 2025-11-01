@@ -127,23 +127,29 @@ async function generarPDF(orden) {
 //-------------------------------------------------------------------------------
 // 📌 Enviar PDF por correo
 //-------------------------------------------------------------------------------
+const nodemailer = require("nodemailer");
+const { generarPDF } = require("./generarPDF"); // Ajusta la ruta si tu archivo es diferente
+
 async function enviarPDFporCorreo(orden) {
   try {
+    // 🔹 Generar PDF de la orden
     const pdfBuffer = await generarPDF(orden);
 
+    // 🔹 Configurar transportador de Gmail
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: process.env.EMAIL_USER, // tu correo
+        pass: process.env.EMAIL_PASS, // app password o contraseña real
       },
     });
 
+    // 🔹 Enviar correo con PDF adjunto
     await transporter.sendMail({
       from: '"Mini E-commerce" <rafbar2000rr@gmail.com>',
-      to: orden.usuario?.email || "no-reply@example.com",
-      subject: "Confirmación de tu orden",
-      text: "Gracias por tu compra. Adjuntamos el detalle de tu orden en PDF.",
+      to: orden.usuario?.email || orden.datosCliente?.email || "no-reply@example.com",
+      subject: `Confirmación de tu orden #${orden._id}`,
+      text: `Hola ${orden.datosCliente?.nombre || ""},\n\nGracias por tu compra. Adjuntamos el detalle de tu orden en PDF.\n\nSaludos, Mini E-commerce.`,
       attachments: [
         {
           filename: `orden_${orden._id}.pdf`,
@@ -153,11 +159,13 @@ async function enviarPDFporCorreo(orden) {
       ],
     });
 
-    console.log("📩 Correo enviado con PDF a", orden.usuario?.email);
+    console.log("📩 Correo enviado con PDF a", orden.usuario?.email || orden.datosCliente?.email);
   } catch (err) {
     console.error("❌ Error enviando correo:", err.message);
     throw err;
   }
 }
+
+
 
 module.exports = { generarPDF, enviarPDFporCorreo };

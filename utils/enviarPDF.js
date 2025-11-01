@@ -6,12 +6,15 @@ const { Buffer } = require("buffer");
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF estilo catálogo profesional usando precios congelados
 //-------------------------------------------------------------------------------
+const PDFDocument = require("pdfkit");
+const axios = require("axios");
+const { Buffer } = require("buffer");
+
 async function generarPDF(orden) {
   return new Promise(async (resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
-
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
@@ -36,7 +39,7 @@ async function generarPDF(orden) {
       doc.moveDown(1);
 
       //-----------------------------------------------
-      // 📦 Datos del cliente
+      // Datos del cliente
       //-----------------------------------------------
       doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
         "Datos del Cliente:", { underline: true }
@@ -51,7 +54,7 @@ async function generarPDF(orden) {
       doc.moveDown(1);
 
       //-----------------------------------------------
-      // 📌 Productos de la orden
+      // Productos de la orden
       //-----------------------------------------------
       doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
         "Productos:", { underline: true }
@@ -59,51 +62,47 @@ async function generarPDF(orden) {
       doc.moveDown(0.5);
 
       for (const p of orden.productos) {
-        if (doc.y + PRODUCT_BOX_HEIGHT > PAGE_HEIGHT) {
-          doc.addPage();
-        }
-
+        if (doc.y + PRODUCT_BOX_HEIGHT > PAGE_HEIGHT) doc.addPage();
         const yInicio = doc.y;
 
         //-----------------------------------------------
-        // 🔹 Caja sombreada por producto
+        // Caja sombreada por producto
         //-----------------------------------------------
         doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
         doc.fillOpacity(1);
 
         //-----------------------------------------------
-        // 🔹 Datos del producto (nombre, cantidad, precios)
+        // Datos del producto
         //-----------------------------------------------
         const nombre = p.nombre || "Producto sin nombre";
-        const cantidad = p.cantidad || 1;
         const precioPagado = p.precioPagado ?? 0;
         const precioActual = p.precioActual ?? 0;
+        const cantidad = p.cantidad || 1;
+        const subtotal = precioPagado * cantidad;
 
         doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
           .text(nombre, 60, yInicio, { width: 350 });
         doc.font("Helvetica").fillColor("#555").fontSize(12)
-          .text(`Cantidad: ${cantidad}`, 60, yInicio + 18, { width: 350 });
-        doc.font("Helvetica").fillColor("#555").fontSize(12)
-          .text(`Precio congelado: $${precioPagado.toFixed(2)}`, 60, yInicio + 33, { width: 350 });
-        doc.font("Helvetica").fillColor("#777").fontSize(10)
-          .text(`Precio actual: $${precioActual.toFixed(2)}`, 60, yInicio + 48, { width: 350 });
+          .text(`Precio congelado: $${precioPagado.toFixed(2)}`, 60, yInicio + 18);
+        doc.text(`Precio actual: $${precioActual.toFixed(2)}`, 60, yInicio + 34);
+        doc.text(`Cantidad: ${cantidad}`, 60, yInicio + 50);
+        doc.font("Helvetica-Bold").text(`Subtotal: $${subtotal.toFixed(2)}`, 60, yInicio + 66);
 
         //-----------------------------------------------
-        // 🔹 Miniatura a la derecha
+        // Miniatura
         //-----------------------------------------------
-        const imgUrl = p.imagen;
-        if (imgUrl) {
+        if (p.imagen) {
           try {
-            const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
+            const response = await axios.get(p.imagen, { responseType: "arraybuffer" });
             const buffer = Buffer.from(response.data, "binary");
             doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80] });
           } catch (err) {
-            console.error("❌ Error cargando imagen remota:", err.message);
+            console.error("❌ Error cargando imagen:", err.message);
           }
         }
 
         //-----------------------------------------------
-        // 🔹 Separador elegante
+        // Separador
         //-----------------------------------------------
         doc.moveDown(6);
         doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
@@ -119,12 +118,12 @@ async function generarPDF(orden) {
         .text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
 
       doc.end();
-
     } catch (err) {
       reject(err);
     }
   });
 }
+
 
 
 //-------------------------------------------------------------------------------

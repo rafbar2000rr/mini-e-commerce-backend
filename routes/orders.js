@@ -24,9 +24,7 @@ router.post("/orders", verifyToken, async (req, res) => {
     if (!paypalOrderId)
       return res.status(400).json({ error: "Falta paypalOrderId" });
 
-    //----------------------------------------------------
     // 🔹 Verificar pago en PayPal
-    //----------------------------------------------------
     const auth = await axios({
       url: "https://api-m.sandbox.paypal.com/v1/oauth2/token",
       method: "post",
@@ -43,26 +41,22 @@ router.post("/orders", verifyToken, async (req, res) => {
     if (paypalData.status !== "COMPLETED")
       return res.status(400).json({ error: "El pago de PayPal no ha sido completado" });
 
-    //----------------------------------------------------
     // 🔹 Obtener productos de DB y calcular total
-    //----------------------------------------------------
     let totalCalculado = 0;
     const productosDetallados = await Promise.all(
       productos.map(async (item) => {
-        if (!item.productoId) return null; // proteger si no viene productoId
         const producto = await Producto.findById(item.productoId);
         if (!producto) return null;
 
         const cantidad = item.cantidad || 1;
-        const precio = producto.precio ?? 0;
-
-        totalCalculado += precio * cantidad;
+        const precioPagado = producto.precio; // <-- precio congelado garantizado
+        totalCalculado += precioPagado * cantidad;
 
         return {
           productoId: producto._id,
           nombre: producto.nombre || "Producto sin nombre",
-          precio,
-          precioPagado: precio,  // ✅ precio congelado
+          precio: producto.precio || 0,
+          precioPagado, // <-- aseguramos que siempre tenga valor
           imagen: producto.imagen || "/placeholder.png",
           cantidad,
         };
@@ -73,9 +67,7 @@ router.post("/orders", verifyToken, async (req, res) => {
     if (productosValidos.length === 0)
       return res.status(400).json({ error: "Ningún producto válido en la orden" });
 
-    //----------------------------------------------------
     // 🧾 Crear la orden
-    //----------------------------------------------------
     const nuevaOrden = new Order({
       paypalOrderId,
       status: "COMPLETED",
@@ -84,18 +76,17 @@ router.post("/orders", verifyToken, async (req, res) => {
       total: totalCalculado,
       datosCliente,
     });
+
     await nuevaOrden.save();
 
-    //----------------------------------------------------
     // 🔹 Vaciar carrito
-    //----------------------------------------------------
     await User.findByIdAndUpdate(userId, { carrito: [] });
 
-    //----------------------------------------------------
     // 🔹 Enviar PDF por correo
-    //----------------------------------------------------
     try {
-      await enviarPDFporCorreo(nuevaOrden);
+      // 🚨 Aquí usamos el objeto recién guardado en DB para que llegue todo completo
+      const ordenConDatos = await Order.findById(nuevaOrden._id).populate("productos.productoId");
+      await enviarPDFporCorreo(ordenConDatos);
       console.log("📩 PDF enviado al correo del cliente");
     } catch (err) {
       console.error("❌ No se pudo enviar el PDF:", err.message);
@@ -111,6 +102,7 @@ router.post("/orders", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Error al crear la orden" });
   }
 });
+
 //----------------------------------------------------
 // ✅ Obtener detalle de orden por ID (usuario)
 //----------------------------------------------------

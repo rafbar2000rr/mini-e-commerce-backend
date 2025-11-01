@@ -44,25 +44,34 @@ router.post("/orders", verifyToken, async (req, res) => {
     // 🔹 Obtener productos de DB y calcular total
     let totalCalculado = 0;
     const productosDetallados = await Promise.all(
-      productos.map(async (item) => {
-        const producto = await Producto.findById(item.productoId);
-        if (!producto) return null;
+  productos.map(async (item) => {
+    const producto = await Producto.findById(item.productoId);
+    if (!producto) {
+      console.warn("⚠️ Producto no encontrado:", item.productoId);
+      return null;
+    }
 
-        const cantidad = item.cantidad || 1;
-        const precio = producto.precio ?? 0;
+    const cantidad = item.cantidad || 1;
+    const precio = Number(producto.precio) || 0;
 
-        totalCalculado += precio * cantidad;
+    console.log("🧾 Producto:", producto.nombre);
+    console.log("   - Precio original:", producto.precio);
+    console.log("   - Precio numérico:", precio);
+    console.log("   - Cantidad:", cantidad);
 
-        return {
-          productoId: producto._id,
-          nombre: producto.nombre || "Sin nombre",
-          precio,
-          precioPagado: precio, // 🔹 Precio congelado seguro
-          imagen: producto.imagen || "/placeholder.png",
-          cantidad,
-        };
-      })
-    );
+    totalCalculado += precio * cantidad;
+
+    return {
+      productoId: producto._id,
+      nombre: producto.nombre || "Sin nombre",
+      precio,
+      precioPagado: precio, // 🔹 Precio congelado (correctamente convertido)
+      imagen: producto.imagen || "/placeholder.png",
+      cantidad,
+    };
+  })
+);
+
 
     const productosValidos = productosDetallados.filter(Boolean);
     if (productosValidos.length === 0)
@@ -77,10 +86,12 @@ router.post("/orders", verifyToken, async (req, res) => {
       total: totalCalculado,
       datosCliente,
     });
+    console.log("🧾 Productos a guardar en la orden:");
+    console.log(productosValidos);
+
     await nuevaOrden.save();
 
-    // 🔹 Vaciar carrito
-    await User.findByIdAndUpdate(userId, { carrito: [] });
+    ;
 
     // 🔹 Enviar PDF por correo
     try {

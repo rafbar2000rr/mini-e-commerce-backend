@@ -13,113 +13,140 @@ const isAdmin = require("../middleware/isAdmin");
 // Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos
 // directamente desde la base de datos (para que nadie altere precios), calcula el total, guarda la orden,
 // vacía el carrito, y envía la orden al correo.
+// routes/orders.js
+
+//----------------------------------------------------
+// 🛍️ Crear una nueva orden (con precios congelados)
+//----------------------------------------------------
+//----------------------------------------------------
+// 🛍️ Crear una nueva orden (con precios congelados)
+//----------------------------------------------------
+const express = require("express");
+const router = express.Router();
+const Order = require("../models/Order");
+const Producto = require("../models/Producto");
+const Carrito = require("../models/Carrito");
+const verifyToken = require("../middleware/verifyToken");
+const { generarPDF, enviarPDFporCorreo } = require("../utils/enviarPDF");
+const axios = require("axios");
+
+// 🛍️ Crear orden con integración PayPal, vaciar carrito y enviar PDF
 router.post("/orders", verifyToken, async (req, res) => {
   try {
-    const { productos, datosCliente } = req.body;
+    const { productos, datosCliente, paypalOrderId } = req.body;
     const userId = req.userId;
 
-    // 🔹 Validar productos
-    if (!productos || !Array.isArray(productos) || productos.length === 0) {
-      return res.status(400).json({ error: "No se enviaron productos válidos" });
+    if (!productos || productos.length === 0) {
+      return res.status(400).json({ error: "No hay productos en la orden" });
     }
 
-    // 🔹 Validar datos del cliente
-    if (
-      !datosCliente ||
-      !datosCliente.direccion ||
-      !datosCliente.ciudad ||
-      !datosCliente.codigoPostal
-    ) {
-      return res.status(400).json({ error: "Faltan datos del cliente" });
+    if (!paypalOrderId) {
+      return res.status(400).json({ error: "Falta paypalOrderId" });
     }
 
-    // 🔎 Reconstruir lista de productos desde la BD para evitar manipulación de precios
-    const productosProcesados = await Promise.all(
-      productos.map(async (p) => {
-        if (!mongoose.Types.ObjectId.isValid(p.productoId)) {
-          throw new Error(`ID de producto inválido: ${p.productoId}`);
-        }
+    //----------------------------------------------------
+    // 🔹 Verificar el pago en PayPal
+    //----------------------------------------------------
+    const PAYPAL_CLIENT = process.env.PAYPAL_CLIENT_ID;
+    const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
 
-        const prodDB = await Producto.findById(p.productoId);
-        if (!prodDB) throw new Error(`Producto no encontrado: ${p.productoId}`);
+    // Obtener token de acceso
+    const auth = await axios({
+      url: "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      method: "post",
+      headers: {
+        "Accept": "application/json",
+        "Accept-Language": "en_US",
+      },
+      auth: { username: PAYPAL_CLIENT, password: PAYPAL_SECRET },
+      params: { grant_type: "client_credentials" },
+    });
 
-        const cantidad = Number(p.cantidad) > 0 ? Number(p.cantidad) : 1;
+    const accessToken = auth.data.access_token;
 
-        // ✅ Verificar stock disponible
-        if (prodDB.stock < cantidad) {
-          throw new Error(
-            `No hay suficiente stock de ${prodDB.nombre}. Disponible: ${prodDB.stock}`
-          );
-        }
+    // Consultar la orden
+    const { data: paypalData } = await axios.get(
+      `https://api-m.sandbox.paypal.com/v2/checkout/orders/${paypalOrderId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
 
-        // ✅ Descontar stock
-        prodDB.stock -= cantidad;
-        await prodDB.save();
+    if (paypalData.status !== "COMPLETED") {
+      return res.status(400).json({ error: "El pago de PayPal no ha sido completado" });
+    }
+
+    //----------------------------------------------------
+    // 🔹 Obtener datos actuales de productos
+    //----------------------------------------------------
+    const productosDetallados = await Promise.all(
+      productos.map(async (item) => {
+        const producto = await Producto.findById(item.productoId);
+        if (!producto) return null;
 
         return {
-          productoId: prodDB._id,
-          nombre: prodDB.nombre,
-          precio: prodDB.precio,
-          imagen: prodDB.imagen || null,
-          cantidad,
+          productoId: producto._id,
+          nombre: producto.nombre,
+          precio: producto.precio,
+          imagen: producto.imagen,
+          cantidad: item.cantidad || 1,
         };
       })
     );
 
-    // ✅ Calcular total usando precios desde la BD
-    const totalCalculado = productosProcesados.reduce(
-      (acc, p) => acc + p.precio * p.cantidad,
+    const productosValidos = productosDetallados.filter(Boolean);
+    if (productosValidos.length === 0)
+      return res.status(400).json({ error: "Ningún producto válido en la orden" });
+
+    const totalCalculado = productosValidos.reduce(
+      (sum, p) => sum + p.precio * p.cantidad,
       0
     );
 
-    // ✅ Agregar monto y moneda al objeto datosCliente
-    datosCliente.monto = totalCalculado;
-    datosCliente.moneda = "USD";
-
-    // ✅ Guardar la orden en MongoDB
+    //----------------------------------------------------
+    // 🧾 Crear orden marcada como COMPLETED
+    //----------------------------------------------------
     const nuevaOrden = new Order({
-  usuario: req.userId,
-  productos: carrito.map((p) => ({
-    productoId: p._id,           // 🔹 Referencia al producto real
-    nombre: p.nombre,            // 🧠 Copia del nombre al momento de la compra
-    precioCompra: p.precio,      // 💰 Precio de ese momento
-    imagen: p.imagen,            // 🖼️ Imagen actual del producto
-    cantidad: p.cantidad,        // 🔹 Cantidad comprada
-  })),
-  total,
-  datosCliente,
-});
-
+      paypalOrderId,
+      status: "COMPLETED",
+      usuario: userId,
+      productos: productosValidos,
+      total: totalCalculado,
+      datosCliente,
+      fecha: new Date(),
+    });
 
     await nuevaOrden.save();
 
-    // ✅ Vaciar carrito del usuario dentro del modelo User
-    await User.findByIdAndUpdate(userId, { carrito: [] });
+    //----------------------------------------------------
+    // 🔹 Vaciar carrito
+    //----------------------------------------------------
+    await Carrito.findOneAndUpdate(
+      { usuario: userId },
+      { productos: [] }
+    );
 
-    // ✅ Recuperar la orden completa
-    const ordenCompleta = await Order.findById(nuevaOrden._id).populate("usuario");
-
-    // ✅ Intentar enviar correo con la orden en PDF
+    //----------------------------------------------------
+    // 🔹 Enviar PDF por correo
+    //----------------------------------------------------
     try {
-      await enviarPDFporCorreo(ordenCompleta);
-    } catch (errorCorreo) {
-      console.error("⚠️ Fallo al enviar correo:", errorCorreo.message);
+      await enviarPDFporCorreo(nuevaOrden);
+      console.log("📩 PDF enviado al correo del cliente");
+    } catch (err) {
+      console.error("❌ No se pudo enviar el PDF:", err.message);
     }
 
-    // 🔹 Responder al cliente
     res.status(201).json({
-      message: `✅ Hola ${datosCliente.nombre}, tu orden se ha creado con éxito! Total: $${totalCalculado.toFixed(2)}`,
-      orden: ordenCompleta,
+      mensaje: "Orden creada y completada con éxito, carrito vaciado y PDF enviado",
+      orden: nuevaOrden,
     });
 
   } catch (error) {
-    console.error("❌ Error en /orders:", error.message);
-    res.status(500).json({
-      error: "Error al procesar la orden",
-      detalle: error.message,
-    });
+    console.error("❌ Error creando la orden:", error);
+    res.status(500).json({ error: "Error al crear la orden" });
   }
 });
+
+
+
 
 
 //----------------------------------------------------------------------------------------------

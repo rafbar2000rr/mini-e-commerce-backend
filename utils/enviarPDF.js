@@ -5,7 +5,8 @@ const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
 const { Buffer } = require("buffer");
 
 //-------------------------------------------------------------------------------
-// 📌 Genera un PDF tipo catálogo profesional
+// 📌 Genera un PDF estilo catálogo profesional usando precios congelados de la orden
+// y evita que las imágenes se corten al pasar de página
 //-------------------------------------------------------------------------------
 // 🧠 Función para generar el PDF de la orden
 async function generarPDF(orden) {
@@ -17,27 +18,32 @@ async function generarPDF(orden) {
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
-      // ------------------------------------------
-      // 💖 ENCABEZADO
-      // ------------------------------------------
+      const PAGE_HEIGHT = doc.page.height - doc.page.margins.bottom; // altura usable de la página
+      const PRODUCT_BOX_HEIGHT = 100; // altura aproximada de cada producto con imagen
+
+      //-----------------------------------------------
+      // 🎀 Encabezado
+      //-----------------------------------------------
       doc.fillColor("#D63384")
         .fontSize(22)
         .text("Detalle de la Orden", { align: "center", underline: true });
       doc.moveDown(1);
 
-      // ------------------------------------------
-      // 📄 INFORMACIÓN GENERAL
-      // ------------------------------------------
+      //-----------------------------------------------
+      // ID, fecha y total
+      //-----------------------------------------------
       doc.fillColor("black").fontSize(12);
       doc.text(`ID de la Orden: ${orden._id}`);
       doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
       doc.font("Helvetica-Bold").text(`Total: $${orden.total.toFixed(2)}`);
       doc.moveDown(1);
 
-      // ------------------------------------------
-      // 👤 DATOS DEL CLIENTE
-      // ------------------------------------------
-      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Datos del Cliente:", { underline: true });
+      //-----------------------------------------------
+      // 📦 Datos del cliente
+      //-----------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
+        "Datos del Cliente:", { underline: true }
+      );
       doc.moveDown(0.5);
       doc.font("Helvetica").fillColor("black");
       doc.text(`Nombre: ${orden.datosCliente?.nombre || "No disponible"}`);
@@ -45,77 +51,78 @@ async function generarPDF(orden) {
       doc.text(`Dirección: ${orden.datosCliente?.direccion || "No disponible"}`);
       doc.text(`Ciudad: ${orden.datosCliente?.ciudad || "No disponible"}`);
       doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal || "No disponible"}`);
-      doc.moveDown(1.2);
+      doc.moveDown(1);
 
-      // ------------------------------------------
-      // 🛍️ LISTA DE PRODUCTOS
-      // ------------------------------------------
-      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text("Productos:", { underline: true });
-      doc.moveDown(0.8);
+      //-----------------------------------------------
+      // 📌 Productos de la orden (con precios congelados)
+      //-----------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
+        "Productos:", { underline: true }
+      );
+      doc.moveDown(0.5);
 
       for (const p of orden.productos) {
-        const nombre = p.productoId?.nombre ?? p.nombre ?? "Producto sin nombre";
-        const precio = p.productoId?.precio ?? p.precio ?? 0;
-        const cantidad = p.cantidad ?? 1;
-        const imgUrl = p.productoId?.imagen || p.imagen;
-
-        const boxHeight = 95; // altura total de la caja de producto
-
-        // 💡 Si no hay espacio suficiente, nueva página
-        if (doc.y + boxHeight > doc.page.height - doc.page.margins.bottom - 20) {
+        // 🔹 Saltar de página si no hay espacio suficiente
+        if (doc.y + PRODUCT_BOX_HEIGHT > PAGE_HEIGHT) {
           doc.addPage();
         }
 
-        // 🔲 Caja de fondo
-        const boxY = doc.y;
-        doc.save();
-        doc.rect(45, boxY - 5, 510, boxHeight).fillOpacity(0.05).fill("#000").restore();
+        const yInicio = doc.y;
 
-        // 📄 Nombre y precio
-        doc.font("Helvetica-Bold").fillColor("#111").fontSize(12)
-          .text(nombre, 60, boxY + 5, { width: 340 });
-        doc.font("Helvetica").fillColor("#555").fontSize(11)
-          .text(`$${precio} x ${cantidad}`, 60, boxY + 25, { width: 340 });
+        //-----------------------------------------------
+        // 🔹 Caja sombreada por producto
+        //-----------------------------------------------
+        doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
+        doc.fillOpacity(1);
 
-        // 🖼️ Imagen (si existe)
+        //-----------------------------------------------
+        // 🔹 Datos del producto (nombre y precio congelado)
+        //-----------------------------------------------
+        const nombre = p.nombre || "Producto sin nombre";
+        const precio = p.precio || 0;
+
+        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
+          .text(nombre, 60, yInicio, { width: 350 });
+        doc.font("Helvetica").fillColor("#555").fontSize(12)
+          .text(`$${precio} x ${p.cantidad || 1}`, 60, yInicio + 18, { width: 350 });
+
+        //-----------------------------------------------
+        // 🔹 Miniatura a la derecha (imagen congelada)
+        //-----------------------------------------------
+        const imgUrl = p.imagen;
         if (imgUrl) {
           try {
             const response = await axios.get(imgUrl, { responseType: "arraybuffer" });
             const buffer = Buffer.from(response.data, "binary");
-
-            // Ajuste automático sin cortar imagen
-            doc.image(buffer, 420, boxY, { width: 80, height: 80, fit: [80, 80] });
+            doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80] });
           } catch (err) {
-            console.error("❌ Error al cargar imagen:", err.message);
+            console.error("❌ Error cargando imagen remota:", err.message);
           }
         }
 
-        // ✨ Separador visual
+        //-----------------------------------------------
+        // 🔹 Separador elegante
+        //-----------------------------------------------
         doc.moveDown(6);
         doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
         doc.moveDown(0.5);
       }
 
-      // ------------------------------------------
-      // 🌸 PIE DE PÁGINA
-      // ------------------------------------------
-      if (doc.y + 60 > doc.page.height - doc.page.margins.bottom) {
-        doc.addPage();
-      }
-      doc.moveDown(2);
+      //-----------------------------------------------
+      // Pie de página
+      //-----------------------------------------------
+      doc.moveDown(1);
       doc.fontSize(10)
         .fillColor("#555")
-        .text("Gracias por tu compra.¡Esperamos verte pronto!", { align: "center" });
+        .text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
 
       doc.end();
+
     } catch (err) {
       reject(err);
     }
   });
 }
-
-
-
 
 
 //-------------------------------------------------------------------------------

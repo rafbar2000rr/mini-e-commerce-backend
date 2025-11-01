@@ -6,9 +6,7 @@ const { Buffer } = require("buffer");
 //-------------------------------------------------------------------------------
 // 📌 Genera un PDF estilo catálogo profesional usando precios congelados
 //-------------------------------------------------------------------------------
-const PDFDocument = require("pdfkit");
-const axios = require("axios");
-const { Buffer } = require("buffer");
+
 
 async function generarPDF(orden) {
   return new Promise(async (resolve, reject) => {

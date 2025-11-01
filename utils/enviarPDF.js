@@ -1,103 +1,162 @@
-const PDFDocument = require("pdfkit");
-const fs = require("fs");
 const nodemailer = require("nodemailer");
+const PDFDocument = require("pdfkit");
+const axios = require("axios");
+const { Buffer } = require("buffer");
 
-// 🔹 Generar PDF en memoria
+//-------------------------------------------------------------------------------
+// 📌 Genera un PDF estilo catálogo profesional con precios congelados y actuales
+//-------------------------------------------------------------------------------
 async function generarPDF(orden) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: "A4", margin: 50 });
+      const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
 
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
 
-      // Título
-      doc.fontSize(20).text("Orden de Compra", { align: "center" });
-      doc.moveDown();
+      const PAGE_HEIGHT = doc.page.height - doc.page.margins.bottom;
+      const PRODUCT_BOX_HEIGHT = 100;
 
-      // Datos del cliente
-      const { datosCliente } = orden;
-      doc.fontSize(12).text(`Nombre: ${datosCliente.nombre}`);
-      doc.text(`Email: ${datosCliente.email}`);
-      doc.text(`Dirección: ${datosCliente.direccion}, ${datosCliente.ciudad}, ${datosCliente.codigoPostal}`);
-      doc.text(`Fecha: ${new Date(datosCliente.fecha).toLocaleString()}`);
-      doc.moveDown();
+      //-----------------------------------------------
+      // 🎀 Encabezado
+      //-----------------------------------------------
+      doc.fillColor("#D63384")
+        .fontSize(22)
+        .text("Detalle de la Orden", { align: "center", underline: true });
+      doc.moveDown(1);
 
-      // Tabla de productos
-      const tableTop = doc.y;
-      const itemX = 50;
-      const quantityX = 250;
-      const priceX = 300;
-      const currentPriceX = 370;
-      const subtotalX = 440;
+      //-----------------------------------------------
+      // ID, fecha y total
+      //-----------------------------------------------
+      doc.fillColor("black").fontSize(12);
+      doc.text(`ID de la Orden: ${orden._id}`);
+      doc.text(`Fecha: ${new Date(orden.fecha).toLocaleString()}`);
+      doc.font("Helvetica-Bold").text(`Total: $${orden.total.toFixed(2)}`);
+      doc.moveDown(1);
 
-      // Encabezados
-      doc.font("Helvetica-Bold");
-      doc.text("Producto", itemX, tableTop);
-      doc.text("Cant.", quantityX, tableTop);
-      doc.text("Precio Pagado", priceX, tableTop);
-      doc.text("Precio Actual", currentPriceX, tableTop);
-      doc.text("Subtotal", subtotalX, tableTop);
-      doc.moveDown();
+      //-----------------------------------------------
+      // 📦 Datos del cliente
+      //-----------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
+        "Datos del Cliente:", { underline: true }
+      );
+      doc.moveDown(0.5);
+      doc.font("Helvetica").fillColor("black");
+      doc.text(`Nombre: ${orden.datosCliente?.nombre || "No disponible"}`);
+      doc.text(`Email: ${orden.datosCliente?.email || "No disponible"}`);
+      doc.text(`Dirección: ${orden.datosCliente?.direccion || "No disponible"}`);
+      doc.text(`Ciudad: ${orden.datosCliente?.ciudad || "No disponible"}`);
+      doc.text(`Código Postal: ${orden.datosCliente?.codigoPostal || "No disponible"}`);
+      doc.moveDown(1);
 
-      // Contenido
-      doc.font("Helvetica");
-      orden.productos.forEach((p, i) => {
-        const y = tableTop + 25 + i * 20;
-        const subtotal = (p.precioPagado || 0) * (p.cantidad || 0);
+      //-----------------------------------------------
+      // 📌 Productos de la orden
+      //-----------------------------------------------
+      doc.font("Helvetica-Bold").fillColor("#333").fontSize(14).text(
+        "Productos:", { underline: true }
+      );
+      doc.moveDown(0.5);
 
-        doc.text(p.nombre, itemX, y);
-        doc.text(p.cantidad, quantityX, y);
-        doc.text(`$${(p.precioPagado || 0).toFixed(2)}`, priceX, y);
-        doc.text(`$${(p.precioActual || 0).toFixed(2)}`, currentPriceX, y);
-        doc.text(`$${subtotal.toFixed(2)}`, subtotalX, y);
-      });
+      for (const p of orden.productos) {
+        if (doc.y + PRODUCT_BOX_HEIGHT > PAGE_HEIGHT) {
+          doc.addPage();
+        }
 
-      doc.moveDown();
+        const yInicio = doc.y;
 
-      // Total
-      doc.font("Helvetica-Bold");
-      doc.text(`Total: $${orden.total.toFixed(2)}`, { align: "right" });
+        //-----------------------------------------------
+        // Caja sombreada
+        //-----------------------------------------------
+        doc.rect(45, yInicio - 5, 510, 90).fillOpacity(0.05).fill("#000000");
+        doc.fillOpacity(1);
+
+        //-----------------------------------------------
+        // Datos del producto
+        //-----------------------------------------------
+        const nombre = p.nombre || "Producto sin nombre";
+        const precioPagado = p.precioPagado || 0;
+        const precioActual = p.precioActual || p.precio || 0;
+        const cantidad = p.cantidad || 1;
+        const subtotal = precioPagado * cantidad;
+
+        doc.font("Helvetica-Bold").fillColor("#222").fontSize(12)
+          .text(nombre, 60, yInicio, { width: 350 });
+        doc.font("Helvetica").fillColor("#555").fontSize(12)
+          .text(`Cantidad: ${cantidad}`, 60, yInicio + 18, { width: 200 })
+          .text(`Precio Pagado: $${precioPagado.toFixed(2)}`, 60, yInicio + 33, { width: 200 })
+          .text(`Precio Actual: $${precioActual.toFixed(2)}`, 60, yInicio + 48, { width: 200 })
+          .text(`Subtotal: $${subtotal.toFixed(2)}`, 60, yInicio + 63, { width: 200 });
+
+        //-----------------------------------------------
+        // Imagen del producto
+        //-----------------------------------------------
+        if (p.imagen) {
+          try {
+            const response = await axios.get(p.imagen, { responseType: "arraybuffer" });
+            const buffer = Buffer.from(response.data, "binary");
+            doc.image(buffer, 420, yInicio, { width: 80, height: 80, fit: [80, 80] });
+          } catch (err) {
+            console.error("❌ Error cargando imagen remota:", err.message);
+          }
+        }
+
+        //-----------------------------------------------
+        // Separador elegante
+        //-----------------------------------------------
+        doc.moveDown(6);
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor("#ccc").lineWidth(0.5).stroke();
+        doc.moveDown(0.5);
+      }
+
+      //-----------------------------------------------
+      // Pie de página
+      //-----------------------------------------------
+      doc.moveDown(1);
+      doc.fontSize(10)
+        .fillColor("#555")
+        .text("Gracias por tu compra. ¡Esperamos verte pronto!", { align: "center" });
 
       doc.end();
+
     } catch (err) {
       reject(err);
     }
   });
 }
 
-// 🔹 Enviar PDF por correo
+//-------------------------------------------------------------------------------
+// 📌 Enviar PDF por correo
+//-------------------------------------------------------------------------------
 async function enviarPDFporCorreo(orden) {
   try {
     const pdfBuffer = await generarPDF(orden);
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT, 10),
-      secure: process.env.SMTP_SECURE === "true",
+      service: "gmail",
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
       },
     });
 
     await transporter.sendMail({
-      from: `"Tienda" <${process.env.SMTP_USER}>`,
-      to: orden.datosCliente.email,
-      subject: `Tu orden ${orden._id}`,
-      text: "Adjuntamos tu factura en PDF",
+      from: '"Mini E-commerce" <rafbar2000rr@gmail.com>',
+      to: orden.usuario?.email || orden.datosCliente?.email || "no-reply@example.com",
+      subject: "Confirmación de tu orden",
+      text: "Gracias por tu compra. Adjuntamos el detalle de tu orden en PDF.",
       attachments: [
         {
           filename: `orden_${orden._id}.pdf`,
           content: pdfBuffer,
+          contentType: "application/pdf",
         },
       ],
     });
 
-    console.log("📩 PDF enviado por correo");
+    console.log("📩 Correo enviado con PDF a", orden.usuario?.email || orden.datosCliente?.email);
   } catch (err) {
-    console.error("❌ Error enviando PDF por correo:", err.message);
+    console.error("❌ Error enviando correo:", err.message);
     throw err;
   }
 }

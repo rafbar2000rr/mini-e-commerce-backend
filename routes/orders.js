@@ -8,7 +8,7 @@ const Producto = require("../models/Producto");
 const mongoose = require("mongoose");
 const isAdmin = require("../middleware/isAdmin");
 const axios = require("axios");
-const Carrito = require("../models/Carrito");
+
 //---------------------------------------------------------------------------------------------
 // 📦 Crear orden y enviar correo
 // Este endpoint recibe productos + datos de cliente, valida todo, reconstruye la lista de productos
@@ -109,10 +109,10 @@ router.post("/orders", verifyToken, async (req, res) => {
     //----------------------------------------------------
     // 🔹 Vaciar carrito
     //----------------------------------------------------
-    await Carrito.findOneAndUpdate(
-      { usuario: userId },
-      { productos: [] }
-    );
+    // await Carrito.findOneAndUpdate(
+    //   { usuario: userId },
+    //   { productos: [] }
+    // );
 
     //----------------------------------------------------
     // 🔹 Enviar PDF por correo

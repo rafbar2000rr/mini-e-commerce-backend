@@ -194,66 +194,53 @@ router.get("/my-orders", verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
 
-    const ordenes = await Order.find({ usuario: userId })
-      .select("productos total estado status datosCliente createdAt")
-      .populate("productos.productoId", "nombre precio imagen")
-      .sort({ createdAt: -1 });
+    const orders = await Order.find({ usuario: userId })
+      .populate("productos.productoId", "nombre imagen precio");
 
-    const ordenesFormateadas = ordenes.map((orden) => ({
-      _id: orden._id,
-      total: orden.total,
-      estado: orden.estado,
-      status: orden.status,
-      fecha: orden.createdAt,
-      datosCliente: orden.datosCliente,
-      productos: orden.productos.map((p) => ({
-        nombre: p.nombre || p.productoId?.nombre || "Producto eliminado",
-        precioPagado: p.precioPagado ?? p.precio ?? 0,
-        precioActual: p.productoId?.precio ?? p.precio ?? 0,
-        imagen: p.imagen || p.productoId?.imagen || "/placeholder.png",
-        cantidad: p.cantidad,
-      })),
-    }));
+    // 💖 Recalcular el total para cada orden (en caso de que no esté guardado)
+    const ordersConTotal = orders.map(o => {
+      const total = o.productos.reduce((acc, p) => {
+        const precio = p.precioPagado ?? p.precio ?? p.productoId?.precio ?? 0;
+        return acc + precio * (p.cantidad || 1);
+      }, 0);
 
-    res.json(ordenesFormateadas);
+      return {
+        ...o.toObject(),
+        total,
+      };
+    });
 
-  } catch (error) {
-    console.error("❌ Error al obtener órdenes del usuario:", error.message);
-    res.status(500).json({ error: "Error al obtener tus órdenes" });
+    res.json(ordersConTotal);
+  } catch (err) {
+    console.error("❌ Error obteniendo órdenes:", err.message);
+    res.status(500).json({ error: "Error obteniendo órdenes" });
   }
 });
 
 //----------------------------------------------------
 // ✅ Listar todas las órdenes (admin)
 //----------------------------------------------------
-router.get("/orders", verifyToken, isAdmin, async (req, res) => {
+router.get("/orders", verifyToken, async (req, res) => {
   try {
-    const ordenes = await Order.find()
-      .populate("usuario", "nombre email rol")
-      .populate("productos.productoId", "nombre precio imagen")
-      .sort({ createdAt: -1 });
+    const userId = req.userId;
+    const orders = await Order.find({ usuario: userId })
+      .populate("productos.productoId", "nombre imagen precio");
 
-    const ordenesFormateadas = ordenes.map((orden) => ({
-      _id: orden._id,
-      usuario: orden.usuario,
-      total: orden.total,
-      estado: orden.estado,
-      fecha: orden.createdAt,
-      productos: orden.productos.map((p) => ({
-        nombre: p.productoId?.nombre || "Producto eliminado",
-        precioPagado: p.precioPagado ?? p.precio ?? 0,
-        precioActual: p.productoId?.precio ?? p.precio ?? 0,
-        cantidad: p.cantidad,
-      })),
-    }));
+    const ordersConTotal = orders.map(o => {
+      const total = o.productos.reduce((acc, p) => {
+        const precio = p.precioPagado ?? p.precio ?? p.productoId?.precio ?? 0;
+        return acc + precio * (p.cantidad || 1);
+      }, 0);
+      return { ...o.toObject(), total };
+    });
 
-    res.json(ordenesFormateadas);
-
-  } catch (error) {
-    console.error("❌ Error al obtener todas las órdenes:", error.message);
-    res.status(500).json({ error: "Error al obtener todas las órdenes" });
+    res.json(ordersConTotal);
+  } catch (err) {
+    console.error("❌ Error obteniendo órdenes:", err.message);
+    res.status(500).json({ error: "Error obteniendo órdenes" });
   }
 });
+
 
 //----------------------------------------------------
 // ✅ Actualizar estado de orden (solo admin)

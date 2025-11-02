@@ -78,26 +78,28 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
     const productosDetallados = [];
 
     for (const item of req.body.productos) {
-      const producto = await Producto.findById(item.productoId || item._id);
+  const producto = await Producto.findById(item.productoId || item._id);
 
-      if (producto) {
-        productosDetallados.push({
-          productoId: producto._id,
-          nombre: producto.nombre,
-          precio: producto.precio,
-          precioPagado: producto.precio, // Precio congelado al momento de compra
-          cantidad: item.cantidad,
-        });
+  if (producto) {
+    productosDetallados.push({
+      productoId: producto._id,
+      nombre: producto.nombre,
+      precio: producto.precio,
+      precioPagado: producto.precio, // Precio congelado al momento de compra
+      imagen: producto.imagen, // ✅ Se guarda la imagen del producto
+      cantidad: item.cantidad,
+    });
 
-        // 🔹 Actualizar stock
-        if (producto.stock >= item.cantidad) {
-          producto.stock -= item.cantidad;
-          await producto.save();
-        } else {
-          console.warn(`⚠️ Stock insuficiente para ${producto.nombre}`);
-        }
-      }
+    // 🔹 Actualizar stock
+    if (producto.stock >= item.cantidad) {
+      producto.stock -= item.cantidad;
+      await producto.save();
+    } else {
+      console.warn(`⚠️ Stock insuficiente para ${producto.nombre}`);
     }
+  }
+}
+
 
     // 🔹 Crear nueva orden asociada al usuario autenticado
     const nuevaOrden = new Order({

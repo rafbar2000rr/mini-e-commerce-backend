@@ -102,22 +102,23 @@ router.post("/capture-order/:orderID", verifyToken, async (req, res) => {
 
 
     // 🔹 Crear nueva orden asociada al usuario autenticado
-    const nuevaOrden = new Order({
-      usuario: req.userId,
-      paypalOrderId: orderID,
-      status: captureData.status,
-      productos: productosDetallados,
-      datosCliente: {
-        ...req.body.datosCliente,
-        direccion: req.body.datosCliente?.direccion || "Sin dirección",
-        ciudad: req.body.datosCliente?.ciudad || "Sin ciudad",
-        codigoPostal: req.body.datosCliente?.codigoPostal || "00000",
-        monto: amount,
-        moneda: currency,
-      },
-      total: amount,
-      fecha: new Date(), // ✅ Guardar fecha actual
-    });
+    // 🔹 Crear nueva orden asociada al usuario autenticado
+const nuevaOrden = new Order({
+  usuario: req.userId,
+  paypalOrderId: orderID,
+  status: captureData.status,
+  productos: productosDetallados,
+  datosCliente: {
+    ...req.body.datosCliente,
+    direccion: req.body.datosCliente?.direccion || "Sin dirección",
+    ciudad: req.body.datosCliente?.ciudad || "Sin ciudad",
+    codigoPostal: req.body.datosCliente?.codigoPostal || "00000",
+    monto: amount,
+    moneda: currency,
+  },
+  total: amount,
+  fecha: new Date().toISOString(), // ✅ Guardar fecha en formato ISO
+});
 
     await nuevaOrden.save();
 
